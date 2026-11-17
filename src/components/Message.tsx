@@ -327,6 +327,11 @@ export function MessageItem({ message, bot, showAuthor }: { message: ChatMessage
       <div className="mt-1 flex h-4 flex-wrap gap-x-2 pl-2 text-[11.5px] text-faint opacity-0 transition-opacity group-hover:opacity-100">
         <span>{timeLabel(message.createdAt)}</span>
         {message.model && !streaming && <span>{message.model === "mock" ? "mock model" : message.model.split("/").pop()}</span>}
+        {message.fallbackFrom && !streaming && (
+          <span className="text-warn" title={`${message.fallbackFrom} failed, so ${message.model} answered instead.`}>
+            fallback for {message.fallbackFrom.split("/").pop()}
+          </span>
+        )}
         {message.usage && (message.usage.input > 0 || message.usage.output > 0) && (
           <span title={`${message.usage.input} in · ${message.usage.output} out`}>{formatTokens(message.usage.input + message.usage.output)} tokens</span>
         )}

@@ -2,6 +2,7 @@
 
 import clsx from "clsx";
 import { ArrowUpRight } from "lucide-react";
+import type { MockReason } from "@/lib/shared/types";
 import { useApp } from "./OpenCrewBotApp";
 import { Drawer } from "./ui";
 
@@ -26,25 +27,44 @@ function KeyRow({ name, envVar, ok, what, href }: { name: string; envVar: string
   );
 }
 
+/** One line explaining why bots are on the scripted mock model. */
+export function mockModeText(reason: MockReason): string {
+  return reason === "forced"
+    ? "Mock mode is on because OPENCREWBOT_MOCK_MODE=true: replies come from a scripted model, not an AI."
+    : "Mock mode: no model provider key is set, so replies come from a scripted model, not an AI.";
+}
+
 export function SettingsPanel({ onClose }: { onClose: () => void }) {
   const { state } = useApp();
   const status = state.status;
   return (
     <Drawer title="Settings" onClose={onClose}>
-      <section>
-        <h3 className="text-[12.5px] font-medium text-mute">API keys</h3>
+      <p className="text-[13px] leading-relaxed text-mute">
+        Keys live on the server in <code className="rounded-md bg-raised-2 px-1 font-mono text-[12px]">.env</code>, never in the browser. Add them, then
+        restart <code className="rounded-md bg-raised-2 px-1 font-mono text-[12px]">pnpm dev</code>.
+      </p>
+      {status?.mockReason && <p className="mt-3 rounded-2xl bg-raised px-4 py-3 text-[13px] text-warn">{mockModeText(status.mockReason)}</p>}
+      <section className="mt-5">
+        <h3 className="text-[12.5px] font-medium text-mute">Model providers</h3>
         <p className="mt-1 text-[13px] leading-relaxed text-mute">
-          Keys live on the server in <code className="rounded-md bg-raised-2 px-1 font-mono text-[12px]">.env</code>, never in the browser. Add them,
-          then restart <code className="rounded-md bg-raised-2 px-1 font-mono text-[12px]">pnpm dev</code>.
+          Each bot picks one model. If it fails, the bot falls back to another provider that has a key.
         </p>
         <ul className="mt-3 divide-y divide-line rounded-2xl bg-raised">
-          <KeyRow
-            name="Nebius Token Factory"
-            envVar="NEBIUS_API_KEY"
-            ok={Boolean(status?.keys.nebius)}
-            what="The open-source models every bot runs on. Without it, bots use a scripted mock model."
-            href="https://tokenfactory.nebius.com"
-          />
+          {status?.providers.map((p) => (
+            <KeyRow
+              key={p.id}
+              name={p.label}
+              envVar={p.keyEnvVars[0]}
+              ok={p.configured}
+              what={`Recommended model: ${p.recommendedModel}`}
+              href={p.signupUrl}
+            />
+          ))}
+        </ul>
+      </section>
+      <section className="mt-7">
+        <h3 className="text-[12.5px] font-medium text-mute">Tool services</h3>
+        <ul className="mt-3 divide-y divide-line rounded-2xl bg-raised">
           <KeyRow name="Tavily" envVar="TAVILY_API_KEY" ok={Boolean(status?.keys.tavily)} what="Web search, page reading and site crawls." href="https://app.tavily.com" />
           <KeyRow
             name="Browserbase"

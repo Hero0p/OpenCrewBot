@@ -6,7 +6,8 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/client/api";
 import type { Bot, BotInput } from "@/lib/shared/types";
 import { useApp } from "./OpenCrewBotApp";
-import { ModelPicker } from "./ModelPicker";
+import { FallbackChain, ModelPicker } from "./ModelPicker";
+import { mockModeText } from "./SettingsPanel";
 import { Button, Drawer, Field, Mascot, Segmented, Toggle, inputClass } from "./ui";
 
 export const BOT_COLORS = ["#3b82f6", "#f59e0b", "#ec4899", "#22c55e", "#8b5cf6", "#14b8a6", "#ef4444", "#eab308", "#f4f4f4"];
@@ -53,7 +54,7 @@ export function ColorPicker({ value, onChange }: { value: string; onChange: (c: 
 /** Create or edit a bot. In edit mode the save bar appears only once something changes. */
 export function BotForm({ bot, onDone }: { bot?: Bot; onDone?: (bot: Bot) => void }) {
   const { state, open, toast } = useApp();
-  const defaultModel = state.models.find((m) => m.id === "MiniMaxAI/MiniMax-M3")?.id ?? state.models[0]?.id ?? "MiniMaxAI/MiniMax-M3";
+  const defaultModel = state.status?.defaultModel ?? "google/gemini-2.5-flash";
   const [initial, setInitial] = useState<BotInput>(() => (bot ? { ...bot } : blankBot(defaultModel)));
   const [form, setForm] = useState<BotInput>(initial);
   const [saving, setSaving] = useState(false);
@@ -151,9 +152,8 @@ export function BotForm({ bot, onDone }: { bot?: Bot; onDone?: (bot: Bot) => voi
         <div>
           <span className="mb-1.5 block text-[12.5px] font-medium text-mute">Model</span>
           <ModelPicker value={form.model} onChange={(id) => set("model", id)} />
-          <span className="mt-1.5 block text-[12px] leading-snug text-faint">
-            {state.status?.mock ? "Mock mode: replies come from a scripted model until NEBIUS_API_KEY is set." : "Open-source models on Nebius Token Factory."}
-          </span>
+          <FallbackChain model={form.model} fallbackModels={form.fallbackModels} />
+          {state.status?.mockReason && <span className="mt-1.5 block text-[12px] leading-snug text-faint">{mockModeText(state.status.mockReason)}</span>}
         </div>
 
         <div>

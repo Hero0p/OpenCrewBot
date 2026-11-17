@@ -8,7 +8,6 @@ import { timeLabel } from "@/lib/client/format";
 import type { Bot, ConversationSummary, Room } from "@/lib/shared/types";
 import { useApp } from "./OpenCrewBotApp";
 import { BotAvatar, IconButton, Mascot, RoomAvatar } from "./ui";
-import { NebiusLogo } from "./NebiusLogo";
 
 type Row =
   | { kind: "room"; id: string; room: Room; summary?: ConversationSummary }
@@ -172,24 +171,26 @@ function RowItem({ row }: { row: Row }) {
   );
 }
 
-/** Bottom bar: who powers the models, and the way to settings and keys. */
+/** Bottom bar: which model providers are live, and the way to settings and keys. */
 function SidebarFooter() {
   const { state, setPanel } = useApp();
   const status = state.status;
   const missing = status ? Object.values(status.keys).filter((on) => !on).length : 0;
-  const settingsHint = status?.mock ? "Settings · mock mode until NEBIUS_API_KEY is set" : missing ? `Settings · ${missing} key${missing === 1 ? "" : "s"} not set` : "Settings";
+  const settingsHint = status?.mock ? "Settings · mock mode" : missing ? `Settings · ${missing} key${missing === 1 ? "" : "s"} not set` : "Settings";
+  const liveProviders = status?.providers.filter((p) => p.configured).map((p) => p.label) ?? [];
   return (
     <div className="flex items-center gap-1 border-t border-line px-3 py-3">
-      <a
-        href="https://tokenfactory.nebius.com"
-        target="_blank"
-        rel="noopener noreferrer"
+      <button
+        type="button"
+        onClick={() => setPanel({ kind: "settings" })}
         className="flex h-10 min-w-0 shrink items-center gap-2 rounded-xl px-3 ring-1 ring-line transition-colors hover:bg-hover hover:ring-line-strong"
-        title="Models by Nebius Token Factory"
+        title={status?.mock ? "Bots use the scripted mock model" : `Models from ${liveProviders.join(", ")}`}
       >
-        <span className="shrink-0 text-[10px] font-semibold tracking-[0.08em] text-faint uppercase">Powered by</span>
-        <NebiusLogo height={14} className="shrink-0" />
-      </a>
+        <span className="shrink-0 text-[10px] font-semibold tracking-[0.08em] text-faint uppercase">Models</span>
+        <span className={clsx("truncate text-[12.5px]", status?.mock ? "text-warn" : "text-mute")}>
+          {status?.mock ? "Mock mode" : liveProviders.join(" · ")}
+        </span>
+      </button>
       <IconButton label="Connections" onClick={() => setPanel({ kind: "connections" })} className="ml-auto">
         <Plug size={18} />
       </IconButton>

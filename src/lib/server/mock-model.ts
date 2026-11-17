@@ -1,4 +1,5 @@
-// A scripted stand-in for a real model, used when NEBIUS_API_KEY is missing.
+// A scripted stand-in for a real model, used when no model provider has a key
+// or when OPENCREWBOT_MOCK_MODE=true forces it.
 // It streams a short reply and exercises the same paths a real model does:
 // "remember …" calls the memory tool, "search …" calls web search, "ask me …"
 // asks a question card, and "open <url>" drives the browser (which asks first).
@@ -97,9 +98,9 @@ export function createMockModel(botName: string) {
       if (search && tools.has("web_search")) return toolCall("web_search", { query: search[1], maxResults: 3 });
 
       const reply =
-        `Hi, I'm **${botName}**, running on the *mock model* because no \`NEBIUS_API_KEY\` is set yet.\n\n` +
+        `Hi, I'm **${botName}**, running on the *mock model* (a script, not an AI). Real models need a provider key such as \`GEMINI_API_KEY\` or \`GROQ_API_KEY\`, and \`OPENCREWBOT_MOCK_MODE\` must not be \`true\`.\n\n` +
         `You said: "${said.slice(0, 200)}"\n\n` +
-        "Try `remember that I like short answers`, `search for Nebius Token Factory`, or `ask me something` to see tools run.";
+        "Try `remember that I like short answers`, `search for MeetUniversity`, or `ask me something` to see tools run.";
       return { stream: streamOf([...start, ...textParts(reply), { type: "finish", finishReason: "stop", usage }]) };
     }) as never,
   });

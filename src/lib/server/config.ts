@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, renameSync } from "node:fs";
 import { resolve } from "node:path";
-import type { AppStatus } from "@/lib/shared/types";
+import type { AppStatus, MockReason } from "@/lib/shared/types";
+import { defaultModel, providerStatuses } from "./providers";
 
 // The data folder is chosen at runtime, so keep the bundler from tracing it.
 export const DATA_DIR = resolve(/*turbopackIgnore: true*/ process.env.OPENCREWBOT_DATA_DIR || "./data");
@@ -18,21 +19,35 @@ export const MASTRA_DB_URL = `file:${resolve(DATA_DIR, "mastra.db")}`;
 /** The single local owner every bot thread belongs to. */
 export const OWNER_ID = "owner";
 
+/** Keys for the tool services. Model provider keys are handled in providers.ts. */
 export const keys = {
-  nebius: () => Boolean(process.env.NEBIUS_API_KEY),
   tavily: () => Boolean(process.env.TAVILY_API_KEY),
   jev: () => Boolean(process.env.TYPESAFE_API_KEY),
   browserbase: () => Boolean(process.env.BROWSERBASE_API_KEY),
   composio: () => Boolean(process.env.COMPOSIO_API_KEY),
 };
 
-/** Without a Nebius key, bots run on a scripted local model so the UI still works. */
-export const isMock = () => !keys.nebius();
+/**
+ * Why bots should use the scripted mock model, if they should.
+ * `OPENCREWBOT_MOCK_MODE=true` forces it even when provider keys are set, for demos and tests.
+ * @returns the reason, or null when bots use real models
+ */
+export function mockReason(): MockReason | null {
+  if (process.env.OPENCREWBOT_MOCK_MODE === "true") return "forced";
+  if (!providerStatuses().some((p) => p.configured)) return "no-provider-key";
+  return null;
+}
+
+/** True when bots run on the scripted mock model instead of a real one. */
+export const isMock = () => mockReason() !== null;
 
 export function appStatus(): AppStatus {
   return {
     mock: isMock(),
-    keys: { nebius: keys.nebius(), tavily: keys.tavily(), jev: keys.jev(), browserbase: keys.browserbase(), composio: keys.composio() },
+    mockReason: mockReason(),
+    providers: providerStatuses(),
+    defaultModel: defaultModel(),
+    keys: { tavily: keys.tavily(), jev: keys.jev(), browserbase: keys.browserbase(), composio: keys.composio() },
     dataDir: DATA_DIR,
   };
 }

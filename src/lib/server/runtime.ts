@@ -13,6 +13,7 @@ import { MASTRA_DB_URL, OWNER_ID, isMock } from "./config";
 import { conversationGeneration, getBot, saveMessage } from "./db";
 import { publish } from "./bus";
 import { costUsd, findModel } from "./models";
+import { answeringModelReporter, resolveModelChain, toMastraModels } from "./model-chain";
 import { createMockModel } from "./mock-model";
 import { announceLiveView, createSession, releaseSession } from "./browserbase";
 import { buildConnectorTools, connectionsVersion } from "./connectors";
@@ -98,11 +99,15 @@ async function buildRuntime(bot: Bot): Promise<BotRuntime> {
   const builtIn = buildTools(bot);
   const connectors = await buildConnectorTools(bot, `bot-${bot.id}-${Date.now()}`);
   const capabilities = [...builtIn.capabilities, ...connectors.capabilities];
+  // Tells the turn in progress which model answered, so a fallback shows up in chat and costs use its price.
+  const reporter = answeringModelReporter((conversationId, modelId) => state.folders.get(key(conversationId, bot.id))?.noteAnsweringModel(modelId));
   const agent = new Agent({
     id: `bot-${bot.id}`,
     name: bot.name,
     instructions: () => systemPrompt(holder.bot, capabilities, builtIn.instructions),
-    model: isMock() ? createMockModel(bot.name) : () => `nebius/${holder.bot.model}`,
+    // The chain is rebuilt on every call from the latest saved bot, so a model switch applies to the next reply.
+    model: isMock() ? createMockModel(bot.name) : () => toMastraModels(resolveModelChain(holder.bot)),
+    inputProcessors: isMock() ? [] : [reporter],
     tools: { ...connectors.tools, ...builtIn.tools },
     memory,
   });
@@ -246,6 +251,14 @@ class TurnFolder {
   private tool(toolCallId: string): Extract<Part, { kind: "tool" }> | undefined {
     const i = this.toolPart.get(toolCallId);
     return i === undefined ? undefined : (this.message.parts[i] as Extract<Part, { kind: "tool" }>);
+  }
+
+  /** Record the model that actually answered. When it isn't the bot's own model, a fallback was used. */
+  noteAnsweringModel(modelId: string) {
+    if (this.finished || modelId === this.message.model) return;
+    this.message.fallbackFrom ??= this.message.model;
+    this.message.model = modelId;
+    this.emit(true);
   }
 
   waitingOnPerson(): boolean {
@@ -392,6 +405,9 @@ async function executeTurn({ bot, conversationId, content, route }: TurnRequest)
 
   let unsubscribe: (() => void) | undefined;
   try {
+    // A model setup mistake (unknown provider, missing key) fails here with a message
+    // that says how to fix it, instead of surfacing later as a vague model error.
+    if (!isMock()) resolveModelChain(latest);
     const session = await sessionFor(latest, conversationId);
     unsubscribe = session.subscribe((event) => folder.handle(event));
     await session.sendMessage({ content });

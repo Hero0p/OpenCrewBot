@@ -5,7 +5,8 @@ import { useState, type ReactNode } from "react";
 import { api } from "@/lib/client/api";
 import type { Bot, Room } from "@/lib/shared/types";
 import { BotForm, MemoryEditor } from "./BotForms";
-import { ModelPicker } from "./ModelPicker";
+import { FallbackChain, ModelPicker } from "./ModelPicker";
+import { mockModeText } from "./SettingsPanel";
 import { RoomForm } from "./RoomForms";
 import { useApp, type InspectorTab } from "./OpenCrewBotApp";
 import { BotAvatar, Button, IconButton, Mascot, RoomAvatar, Tabs, Toggle } from "./ui";
@@ -181,7 +182,8 @@ function BotDetails({ bot }: { bot: Bot }) {
       <section>
         <h3 className="mb-1.5 px-1 text-[12.5px] font-medium text-faint">Default model</h3>
         <ModelPicker value={bot.model} onChange={switchModel} />
-        {state.status?.mock && <p className="mt-1.5 px-1 text-[12px] text-faint">Mock mode: replies use a scripted model until NEBIUS_API_KEY is set.</p>}
+        <FallbackChain model={bot.model} fallbackModels={bot.fallbackModels} />
+        {state.status?.mockReason && <p className="mt-1.5 px-1 text-[12px] text-faint">{mockModeText(state.status.mockReason)}</p>}
       </section>
       <Card title="Tools">
         {tools.length ? (

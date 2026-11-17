@@ -7,7 +7,8 @@ import { DATA_DIR } from "./config";
 import { InputError } from "./errors";
 import * as store from "./db";
 import { publish } from "./bus";
-import { DEFAULT_MODEL } from "./models";
+import { defaultModel } from "./providers";
+import { splitModelId } from "@/lib/shared/providers";
 import { deleteWorkspace, writeMemory } from "./memory-files";
 import { forgetConversation, resetBot, runTurn, runningBots, stopConversation } from "./runtime";
 import { messagePreview } from "@/lib/shared/preview";
@@ -22,9 +23,27 @@ const g = globalThis as unknown as { __opencrewbotBoot?: Promise<void> };
 export function boot(): Promise<void> {
   g.__opencrewbotBoot ??= (async () => {
     await sweepInterrupted();
+    await migrateModelIdsToProviderPrefix();
     await seed();
   })();
   return g.__opencrewbotBoot;
+}
+
+const MODEL_ID_MIGRATION = "migrations.modelIdsHaveProvider";
+
+/**
+ * One-time upgrade of bots saved by the original OpenCrewBot. It only supported
+ * Nebius and stored bare Nebius ids ("MiniMaxAI/MiniMax-M3"); model ids now always
+ * start with the provider ("nebius/MiniMaxAI/MiniMax-M3"). A bare id can't be told
+ * apart by looking at it (Nebius also hosts "google/gemma-3-27b-it"), so every bot
+ * that existed before this upgrade is prefixed exactly once, guarded by a settings flag.
+ */
+async function migrateModelIdsToProviderPrefix() {
+  if (await store.getSetting<boolean>(MODEL_ID_MIGRATION)) return;
+  for (const bot of await store.listBots()) {
+    await store.saveBot({ ...bot, model: `nebius/${bot.model}` });
+  }
+  await store.setSetting(MODEL_ID_MIGRATION, true);
 }
 
 /** A turn that was streaming when the server stopped can't resume. Say so. */
@@ -46,6 +65,7 @@ const SEED_MARKER = join(DATA_DIR, ".seeded");
 async function seed() {
   if (existsSync(SEED_MARKER)) return;
   const tools = { webSearch: true, memory: true, codeMode: false, browser: false, askUser: true };
+  const model = defaultModel();
   const scout = await createBot({
     name: "Scout",
     title: "Research",
@@ -54,7 +74,7 @@ async function seed() {
       "Research before answering anything time-sensitive. Search, read the best two or three sources, then answer with the URLs you used. Say plainly when sources disagree or you couldn't verify something.",
     emoji: "🔭",
     color: "#2f7df6",
-    model: DEFAULT_MODEL,
+    model,
     tools: { ...tools, codeMode: true },
     approval: "ask",
     pinned: true,
@@ -67,7 +87,7 @@ async function seed() {
       "Write in plain, specific language. Match the person's voice once you know it, and keep their style preferences in memory. Offer one tight draft, not three options.",
     emoji: "✒️",
     color: "#e0663d",
-    model: DEFAULT_MODEL,
+    model,
     tools: { ...tools, webSearch: false },
     approval: "ask",
     pinned: false,
@@ -80,7 +100,7 @@ async function seed() {
       "Turn vague goals into a short, ordered plan with owners. Keep decisions and open questions in memory. In rooms, hand research to @scout and drafting to @quill.",
     emoji: "🧭",
     color: "#1f9d6b",
-    model: DEFAULT_MODEL,
+    model,
     tools,
     approval: "ask",
     pinned: false,
@@ -111,10 +131,18 @@ async function uniqueHandle(wanted: string, exceptId?: string): Promise<string> 
   return handle;
 }
 
+function validateModelId(id: string, field: string) {
+  if (!splitModelId(id)) {
+    throw new InputError(`${field} "${id}" must start with a supported provider: google/, groq/, openrouter/ or nebius/.`);
+  }
+}
+
 function validateBot(input: Partial<BotInput>) {
   if (input.name !== undefined && !input.name.trim()) throw new InputError("A bot needs a name.");
   if (input.name && input.name.length > 40) throw new InputError("Keep the name under 40 characters.");
   if (input.instructions && input.instructions.length > 8000) throw new InputError("Instructions are limited to 8,000 characters.");
+  if (input.model !== undefined) validateModelId(input.model, "Model");
+  for (const id of input.fallbackModels ?? []) validateModelId(id, "Fallback model");
 }
 
 export async function createBot(input: BotInput): Promise<Bot> {

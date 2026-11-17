@@ -167,13 +167,14 @@ Approve/Deny card clicked
 ### Module J: Multi-model intelligence
 | Requirement | Original status | Evidence | What we add |
 |---|---|---|---|
-| Multiple providers | ❌ Missing | **Hard-coded to Nebius**: `runtime.ts` line 105 builds `nebius/<model>`; `config.ts` mock mode = "no Nebius key"; `models.ts` only fetches Nebius's catalog | Planned |
-| Model per agent | ✅ Implemented | `bot.model`, changeable from the model picker without restart | Keep |
-| Task-based routing | ❌ Missing | README: "coming soon" | Planned |
-| Fallback models | ❌ Missing | — | Planned |
-| Local endpoints | ❌ Missing | — | Planned |
-| Token / cost tracking | 🟡 Partial | Tokens and $ cost shown on every reply; no totals per agent, run or day | Planned |
-| Mock mode | 🎭 Mocked | A scripted fake model with 4 regex rules (`mock-model.ts`). It calls the real tools, but cannot reason, read memory or plan | Extend so the planner also works offline |
+| Multiple providers | ❌ Missing | **Hard-coded to Nebius**: `runtime.ts` line 105 builds `nebius/<model>`; `config.ts` mock mode = "no Nebius key"; `models.ts` only fetches Nebius's catalog | ✅ **Step 2:** Google Gemini, Groq, OpenRouter and Nebius through Mastra's model router. Model ids are `<provider>/<model>`; provider facts live in `shared/providers.ts`, keys in `server/providers.ts`. Existing bots are migrated once to `nebius/…` |
+| Model per agent | ✅ Implemented | `bot.model`, changeable from the model picker without restart | Kept; the picker now spans all providers and greys out providers without a key |
+| Task-based routing | ❌ Missing | README: "coming soon" | Planned (Chief of Staff step) |
+| Fallback models | ❌ Missing | — | ✅ **Step 2:** `server/model-chain.ts`. Each bot has an ordered chain: its model, then `bot.fallbackModels` or (by default) the recommended model of every other provider with a key. Mastra retries each model once, then moves on. A Mastra processor records which model actually answered; the reply shows "fallback for …" |
+| Local endpoints | ❌ Missing | — | Planned (optional: Ollama) |
+| Token / cost tracking | 🟡 Partial | Tokens and $ cost shown on every reply; no totals per agent, run or day | 🟡 **Step 2:** cost now uses the price of the model that actually answered (list prices from models.dev; free tier billed $0). Totals still planned |
+| Mock mode | 🎭 Mocked | A scripted fake model with 4 regex rules (`mock-model.ts`). It calls the real tools, but cannot reason, read memory or plan | 🟡 **Step 2:** on when no provider has a key, or forced with `OPENCREWBOT_MOCK_MODE=true`. Planner support still planned |
+| Misconfiguration reporting | ❌ Missing | — | ✅ **Step 2:** a model whose provider has no key fails with a message naming the missing env var; an id without a known provider is rejected (HTTP 400) |
 
 ---
 
@@ -190,7 +191,7 @@ Approve/Deny card clicked
 | Task execution dashboard | ❌ | — |
 | Approval centre | 🟡 | Inline chat cards only |
 | Integration manager | ✅ | Connections panel (Composio apps + MCP servers) |
-| Model configuration | 🟡 | Per-bot model picker, Nebius models only |
+| Model configuration | 🟡 → ✅ (Step 2) | Per-bot model picker across 4 providers, fallback chain shown under it, provider keys listed in Settings |
 | Scheduled workflows | ❌ | — |
 | Execution history | 🟡 | Chat transcripts only |
 
@@ -217,7 +218,7 @@ Approve/Deny card clicked
 
 ## 5. Architectural limitations found
 
-1. **Single model provider.** Nebius is wired in at three places (see Module J).
+1. **Single model provider.** Nebius is wired in at three places (see Module J). *Fixed in Step 2.*
 2. **No unit of work bigger than one chat turn.** Everything is a message. There are no tasks, runs or plans to track, retry or resume.
 3. **Rooms are sequential.** `runRoom()` awaits each bot before starting the next, so no two bots ever work at the same time.
 4. **Approval state lives in memory.** It's lost on restart; this fails safe, but can't be resumed or reviewed later.
@@ -228,6 +229,7 @@ Approve/Deny card clicked
 9. **No tests.** Every change has to be verified by hand until we add a test suite.
 10. **No sign-in.** The app trusts anyone who can reach it. It's safe locally because it listens on `127.0.0.1` only and `proxy.ts` blocks other hosts. **It must not be deployed publicly (e.g. Render) without adding authentication.**
 11. **The local disk is the database.** On hosts with temporary disks (Render's free tier) every restart would wipe bots, chats and memory.
+12. **Gemini rejected the web search tool.** *Found and fixed in Step 2.* Tavily's search tool declares `includeRawContent` as `false | "markdown" | "text"`; Gemini refuses a boolean inside an enum, so every request from a bot with web search failed on Gemini. `tools.ts` now narrows that option to `"markdown" | "text"` (leaving it out already means "no content").
 
 ## 6. Extend or replace? Decisions
 

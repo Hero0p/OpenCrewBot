@@ -44,10 +44,45 @@ function memoryTools(botId: string): ToolsInput {
   };
 }
 
+/**
+ * Tavily's search tool, with one option narrowed so every model provider accepts its schema.
+ * Tavily declares `includeRawContent` as `false | "markdown" | "text"`. Gemini rejects a
+ * boolean inside an enum ("Invalid value at …enum[0] (TYPE_STRING), false"), which made
+ * every request from a bot with web search fail on Gemini. Leaving the option out already
+ * means "no raw content", so dropping `false` loses nothing.
+ * @param apiKey - the Tavily key
+ * @returns a drop-in replacement for `createTavilySearchTool`
+ * @throws Error at startup if a Tavily update changes the schema so it can't be narrowed this way
+ */
+function webSearchTool(apiKey: string | undefined) {
+  const tavilySearch = createTavilySearchTool({ apiKey });
+  const tavilyInput = tavilySearch.inputSchema;
+  if (!(tavilyInput instanceof z.ZodObject) || !tavilySearch.execute) {
+    throw new Error("tools.ts: @mastra/tavily's search tool changed shape; re-check webSearchTool().");
+  }
+  const runTavilySearch = tavilySearch.execute;
+  return createTool({
+    id: tavilySearch.id,
+    description: tavilySearch.description,
+    inputSchema: tavilyInput.extend({
+      includeRawContent: z
+        .enum(["markdown", "text"])
+        .optional()
+        .describe('Include the cleaned page content of each result, as "markdown" or "text". Leave it out to skip page content.'),
+    }),
+    outputSchema: tavilySearch.outputSchema,
+    // The narrowed schema accepts a subset of Tavily's own, so every input it lets through is a valid Tavily input.
+    execute: (input, context) => runTavilySearch(input as TavilySearchInput, context),
+  });
+}
+
+/** The input type of Tavily's search tool, taken from the tool itself so it stays in sync. */
+type TavilySearchInput = Parameters<NonNullable<ReturnType<typeof createTavilySearchTool>["execute"]>>[0];
+
 function webTools(): ToolsInput {
   const apiKey = process.env.TAVILY_API_KEY;
   return {
-    web_search: createTavilySearchTool({ apiKey }),
+    web_search: webSearchTool(apiKey),
     read_page: createTavilyExtractTool({ apiKey }),
     crawl_site: createTavilyCrawlTool({ apiKey }),
   };

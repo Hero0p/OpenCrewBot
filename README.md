@@ -44,7 +44,7 @@ OpenCrewBot treats AI as a messaging app. Every contact in the sidebar is a bot 
 
 Give each bot a name, a role, instructions, a model and a set of tools. Each reply shows its tokens and cost.
 
-**Choose the model from the bot's Details.** **Change** opens a model sheet with three suggested picks (fastest, best all-rounder, strongest) and every model in Nebius Token Factory's live catalog, with search, context size, tool support and price. A new model applies from the bot's next reply, with no restart. Automatic routing, where Jev picks a model for each message, is coming soon.
+**Choose the model from the bot's Details.** **Change** opens a model sheet with three suggested picks (fastest, best all-rounder, strongest) and every model from the providers you have keys for (Google Gemini, Groq, OpenRouter and Nebius Token Factory), with search, context size, tool support and price. A new model applies from the bot's next reply, with no restart. **If the model fails** (rate limit, outage), the bot falls back to another provider that has a key, and the reply shows which model answered.
 
 The details panel keeps a short summary of the bot, with the full editor one click away. Changes apply from the bot's next reply.
 
@@ -123,7 +123,7 @@ OpenCrewBot doesn't build its own agent loop. Each bot gets a Mastra [`AgentCont
 
 ![Diagram](/public/image.png)
 
-All keys stay on the server. Without a Nebius key, bots run on a scripted mock model that streams replies and calls the real tools, so every part of the interface can be tried before you connect anything.
+All keys stay on the server. Without any model provider key (or with `OPENCREWBOT_MOCK_MODE=true`), bots run on a scripted mock model that streams replies and calls the real tools, so every part of the interface can be tried before you connect anything.
 
 ## Get started
 
@@ -143,7 +143,12 @@ Add your keys to `.env`, then restart `pnpm dev`. Every key is optional:
 
 | Variable | What it turns on |
 | --- | --- |
-| `NEBIUS_API_KEY` | Real models from [Nebius Token Factory](https://tokenfactory.nebius.com). Without it, bots use the mock model. |
+| `GEMINI_API_KEY` | Google Gemini models ([get a key](https://aistudio.google.com/apikey)). `GOOGLE_GENERATIVE_AI_API_KEY` also works. |
+| `GROQ_API_KEY` | Fast open models on [Groq](https://console.groq.com/keys). |
+| `OPENROUTER_API_KEY` | [OpenRouter](https://openrouter.ai/keys), including its free `:free` models. |
+| `NEBIUS_API_KEY` | Open-source models from [Nebius Token Factory](https://tokenfactory.nebius.com). |
+| `OPENCREWBOT_DEFAULT_MODEL` | Optional. The model new bots start with, e.g. `google/gemini-2.5-flash`. Default: the first provider above that has a key. |
+| `OPENCREWBOT_MOCK_MODE` | Optional. `true` forces the scripted mock model even when keys are set. Without any model key, mock mode is on anyway. |
 | `TAVILY_API_KEY` | Web search, page reading and site crawls. |
 | `BROWSERBASE_API_KEY` | Cloud browsers for bots with the Browser tool. |
 | `BROWSERBASE_PROJECT_ID` | Optional. Inferred from the key when empty. |
@@ -165,7 +170,7 @@ Add your keys to `.env`, then restart `pnpm dev`. Every key is optional:
 
 Bots, rooms and the chat transcript are stored in SQLite at `data/opencrewbot.db`. Mastra keeps each bot's model-side thread history in `data/mastra.db`. Each bot's memory is `data/workspaces/<botId>/MEMORY.md`. Nothing leaves your machine except calls to the services you configure:
 
-- **Nebius Token Factory** receives each bot's system prompt (including its `MEMORY.md`), the conversation, and tool results.
+- **Your model providers** (Google, Groq, OpenRouter, Nebius: whichever a bot's model and fallbacks use) receive each bot's system prompt (including its `MEMORY.md`), the conversation, and tool results. Free tiers may use this data to improve their products; check each provider's terms.
 - **Tavily** receives search queries and the URLs a bot reads or crawls.
 - **Browserbase** runs the cloud browser, so it sees the pages a bot visits and anything typed into them. Sessions are released when a bot is reset or deleted, and expire after `BROWSERBASE_SESSION_MINUTES`.
 - **Jev** receives the room name, member names and descriptions, the last few room messages and the new message, when an Auto room has no @mention.
@@ -209,7 +214,11 @@ It assumes one local owner and has no sign-in. To keep it that way, `pnpm dev` a
 - `src/lib/server/rooms.ts` and `jev.ts`: room routing, catch-up context and hand-offs.
 - `src/lib/server/memory-files.ts`: `MEMORY.md` reads, writes, edits and redaction.
 - `src/lib/server/browserbase.ts`: creates, announces and releases each bot's Browserbase session.
-- `src/lib/server/mock-model.ts`: the scripted model used without a Nebius key.
+- `src/lib/shared/providers.ts`: the model providers (names, env vars, recommended models) and model-id helpers.
+- `src/lib/server/providers.ts`: which providers have a key, and the default model.
+- `src/lib/server/model-chain.ts`: the ordered list of models a bot tries (its model, then fallbacks), and the reporter that records which model answered.
+- `src/lib/server/models.ts`: the model picker's catalog and prices.
+- `src/lib/server/mock-model.ts`: the scripted model used without any provider key.
 - `src/components/`: the chat interface. `src/lib/client/store.ts` folds server events into state.
 
 ## Contributing
