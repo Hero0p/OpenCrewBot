@@ -1,7 +1,8 @@
 import { body, handle } from "@/lib/server/http";
 import { getBot } from "@/lib/server/db";
 import { publish } from "@/lib/server/bus";
-import { MEMORY_PROMPT_LIMIT, memoryPath, readMemory, writeMemory } from "@/lib/server/memory-files";
+import { MEMORY_PROMPT_LIMIT, memoryPath, readMemory } from "@/lib/server/memory-files";
+import { saveEditedFile } from "@/lib/server/memory-layers";
 import { InputError } from "@/lib/server/service";
 
 async function requireBot(id: string) {
@@ -22,8 +23,10 @@ export async function PUT(request: Request, ctx: RouteContext<"/api/bots/[id]/me
     await requireBot(id);
     const { content } = await body<{ content: string }>(request);
     if (typeof content !== "string") throw new InputError("Expected { content }.");
-    const saved = writeMemory(id, content);
+    // Same path as the Memory Manager: new lines you add are stamped "by you" (provenance).
+    const saved = saveEditedFile({ scope: "agent", id }, content);
     publish({ type: "memory-changed", botId: id });
+    publish({ type: "memory-files-changed", key: `agent:${id}` });
     return { content: saved };
   });
 }

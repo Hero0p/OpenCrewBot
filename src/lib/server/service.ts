@@ -13,8 +13,11 @@ import { deleteWorkspace, writeMemory } from "./memory-files";
 import { forgetConversation, resetBot, respondToApproval, runTurn, runningBots, stopConversation } from "./runtime";
 import { expireAllPending, expireApproval, recordDecision } from "./approvals";
 import { DEFAULT_AUTO_ACTIONS_PER_DAY } from "./permissions";
-import { WORKFORCE_AGENTS, WORKFORCE_ROOMS, modelForTier } from "./workforce";
+import { MORGAN_INSTRUCTIONS, MORGAN_V1_MARKER, WORKFORCE_AGENTS, WORKFORCE_ROOMS, modelForTier } from "./workforce";
 import { listSkills } from "./skills";
+import { createProject, listProjects, provenanceComment, provenanceTime, readMemoryFile, saveEditedFile } from "./memory-layers";
+import { recoverRuns, setTaskRunner } from "./engine";
+import { agentTaskRunner } from "./task-runner";
 import { messagePreview } from "@/lib/shared/preview";
 import { roomConversationId, runRoom } from "./rooms";
 
@@ -30,8 +33,52 @@ export function boot(): Promise<void> {
     await migrateModelIdsToProviderPrefix();
     await seed();
     await seedWorkforce();
+    await upgradeChiefOfStaff();
+    await seedSharedMemory();
+    // The engine runs tasks as agent turns; then any run cut off by a restart continues.
+    setTaskRunner(agentTaskRunner);
+    await recoverRuns();
   })();
   return g.__opencrewbotBoot;
+}
+
+const CHIEF_OF_STAFF_UPGRADED = "seed.workforce.v2";
+
+/**
+ * Once, for installs seeded before the planner existed: give the Chief of Staff (Morgan) the
+ * planning tools, and replace its first-version instructions with the planning ones, but only
+ * if you haven't edited them (they still contain a phrase only the first version had).
+ */
+async function upgradeChiefOfStaff() {
+  if (await store.getSetting<boolean>(CHIEF_OF_STAFF_UPGRADED)) return;
+  for (const bot of await store.listBots()) {
+    if (bot.handle !== "morgan" || bot.title !== "Chief of Staff") continue;
+    const instructions = bot.instructions.includes(MORGAN_V1_MARKER) ? MORGAN_INSTRUCTIONS : bot.instructions;
+    await store.saveBot({ ...bot, instructions, tools: { ...bot.tools, planning: true } });
+  }
+  await store.setSetting(CHIEF_OF_STAFF_UPGRADED, true);
+}
+
+const MEMORY_SEEDED = "seed.memory.v1";
+
+/**
+ * Create the shared memory files once: your preferences, team decisions, and a
+ * MeetUniversity project (the assignment's example business) as the active project.
+ * The project starts with facts stated in the assignment brief only.
+ */
+async function seedSharedMemory() {
+  if (await store.getSetting<boolean>(MEMORY_SEEDED)) return;
+  if (!readMemoryFile({ scope: "user" })) saveEditedFile({ scope: "user" }, "# Your preferences\n\n");
+  if (!readMemoryFile({ scope: "decisions" })) saveEditedFile({ scope: "decisions" }, "# Team decisions\n\n");
+  if ((await listProjects()).length === 0) {
+    const source = provenanceComment({ by: "setup", when: provenanceTime(), why: "stated in the assignment brief", in: "first start" });
+    const facts = [
+      `- Website: https://www.meetuniversity.com/ ${source}`,
+      `- Product lines: Aspirations (student career discovery and navigation), Study Abroad / University Applications, and School Partnerships. ${source}`,
+    ];
+    await createProject("MeetUniversity", { activate: true, body: `${facts.join("\n")}\n` });
+  }
+  await store.setSetting(MEMORY_SEEDED, true);
 }
 
 const WORKFORCE_SEEDED = "seed.workforce.v1";
@@ -102,7 +149,7 @@ const SEED_MARKER = join(DATA_DIR, ".seeded");
 
 async function seed() {
   if (existsSync(SEED_MARKER)) return;
-  const tools = { webSearch: true, memory: true, codeMode: false, browser: false, askUser: true, files: false };
+  const tools = { webSearch: true, memory: true, codeMode: false, browser: false, askUser: true, files: false, planning: false };
   const model = defaultModel();
   const scout = await createBot({
     name: "Scout",
@@ -220,7 +267,7 @@ export async function createBot(input: BotInput): Promise<Bot> {
     autoActionsPerDay: input.autoActionsPerDay ?? DEFAULT_AUTO_ACTIONS_PER_DAY,
     skills: input.skills ?? [],
     outputFormat: input.outputFormat ?? "",
-    tools: { ...input.tools, files: input.tools.files ?? false },
+    tools: { ...input.tools, files: input.tools.files ?? false, planning: input.tools.planning ?? false },
     // null or absent: automatic fallbacks (see automaticFallbacks in shared/providers.ts).
     fallbackModels: input.fallbackModels ?? undefined,
     handle: await uniqueHandle(input.handle || input.name),

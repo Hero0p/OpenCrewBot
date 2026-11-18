@@ -8,6 +8,7 @@ import { StreamErrorRetryProcessor, type Processor } from "@mastra/core/processo
 import type { Bot, ProviderId } from "@/lib/shared/types";
 import { automaticFallbacks, providerInfo, splitModelId } from "@/lib/shared/providers";
 import { providerApiKey, providerStatuses } from "./providers";
+import { conversationIdOf } from "./request-context";
 
 /** How many times Mastra retries one model before moving to the next in the chain. */
 const RETRIES_PER_MODEL = 1;
@@ -110,13 +111,6 @@ export function isConnectionReset(error: unknown): boolean {
  */
 export function modelStepRetry(): StreamErrorRetryProcessor {
   return new StreamErrorRetryProcessor({ maxRetries: 2, delayMs: 500, matchers: [isMalformedToolCall, isConnectionReset] });
-}
-
-/** Mastra's AgentController puts its session details in the request context under this key. */
-function conversationIdOf(requestContext: { get(key: string): unknown } | undefined): string | undefined {
-  const controller = requestContext?.get("controller");
-  if (typeof controller !== "object" || controller === null || !("scope" in controller)) return undefined;
-  return typeof controller.scope === "string" ? controller.scope : undefined;
 }
 
 /** A processor with `processLLMResponse` present, which Mastra's `inputProcessors` requires for this hook. */

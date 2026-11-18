@@ -46,7 +46,11 @@ function textParts(text: string): Part[] {
 
 const usage = { inputTokens: 120, outputTokens: 40, totalTokens: 160 };
 
-export function createMockModel(botName: string) {
+/**
+ * @param botName - shown in the scripted greeting
+ * @param settings.plan - for a planning bot: builds the create_plan input from the person's request
+ */
+export function createMockModel(botName: string, settings: { plan?: (goal: string) => unknown } = {}) {
   return new MastraLanguageModelV2Mock({
     provider: "mock",
     modelId: "mock-model",
@@ -80,12 +84,24 @@ export function createMockModel(botName: string) {
         ]),
       });
 
+      // A task of a team plan (engine.ts taskPrompt): answer with a clearly labelled simulated result.
+      const fullText = lastUserText(prompt);
+      if (fullText.startsWith("[Task from the team plan")) {
+        const title = fullText.match(/^Your task: (.+)$/m)?.[1] ?? "this task";
+        const result = `**SIMULATED result (mock model, not real work):** ${title}.\n\nWith a real model, ${botName} would do this task with its tools and skills and report here.`;
+        return { stream: streamOf([...start, ...textParts(result), { type: "finish", finishReason: "stop", usage }]) };
+      }
+
       // Room turns wrap the room's new lines; use the person's latest line.
-      const lines = lastUserText(prompt).split("\n").filter(Boolean);
+      const lines = fullText.split("\n").filter(Boolean);
       const personLine = lines.filter((l) => l.startsWith("Person: ")).pop();
       const said = personLine ? personLine.slice("Person: ".length) : (lines.pop() ?? "");
       const remember = said.match(/remember (?:that )?(.+)/i);
-      if (remember && tools.has("memory_add")) return toolCall("memory_add", { note: remember[1] });
+      if (remember && tools.has("memory_add")) {
+        // Facts about the person ("I like…", "my name…") are their preferences, shared with every bot.
+        const aboutThePerson = /\b(i|my|me|i'm|i am)\b/i.test(remember[1]);
+        return toolCall("memory_add", { note: remember[1], scope: aboutThePerson ? "user" : "mine", why: "the person asked me to remember it" });
+      }
       if (/\bask me\b/i.test(said) && tools.has("ask_user")) {
         return toolCall("ask_user", {
           question: "Do you want short answers or detailed ones?",
@@ -96,6 +112,8 @@ export function createMockModel(botName: string) {
       if (url && tools.has("browser_goto")) return toolCall("browser_goto", { url: url[1] });
       const search = said.match(/(?:search|look up|find)\s+(?:for\s+)?(.+)/i);
       if (search && tools.has("web_search")) return toolCall("web_search", { query: search[1], maxResults: 3 });
+      // A planning bot (Chief of Staff) turns any other request into a team plan.
+      if (settings.plan && tools.has("create_plan") && said.trim()) return toolCall("create_plan", settings.plan(said.trim()));
 
       const reply =
         `Hi, I'm **${botName}**, running on the *mock model* (a script, not an AI). Real models need a provider key such as \`GEMINI_API_KEY\` or \`GROQ_API_KEY\`, and \`OPENCREWBOT_MOCK_MODE\` must not be \`true\`.\n\n` +

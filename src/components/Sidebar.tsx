@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import { BookOpen, MoreHorizontal, PanelLeft, Pin, Plug, Plus, Search, Settings, ShieldCheck, X } from "lucide-react";
+import { BookOpen, Brain, ListChecks, MoreHorizontal, PanelLeft, Pin, Plug, Plus, Search, Settings, ShieldCheck, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/client/api";
 import { timeLabel } from "@/lib/client/format";
@@ -204,6 +204,12 @@ function SidebarFooter() {
             {waitingApprovals}
           </span>
         )}
+      </IconButton>
+      <IconButton label="Tasks and runs" onClick={() => setPanel({ kind: "runs" })}>
+        <ListChecks size={18} />
+      </IconButton>
+      <IconButton label="Memory" onClick={() => setPanel({ kind: "memory" })}>
+        <Brain size={18} />
       </IconButton>
       <IconButton label="Skills, tools and files" onClick={() => setPanel({ kind: "skills" })}>
         <BookOpen size={18} />

@@ -90,6 +90,7 @@ const TOOL_LABELS: Record<keyof Bot["tools"], string> = {
   browser: "Browser",
   askUser: "Asks questions",
   files: "Files & charts",
+  planning: "Plans team work",
 };
 
 /** Which connected apps and MCP servers this bot may use. */

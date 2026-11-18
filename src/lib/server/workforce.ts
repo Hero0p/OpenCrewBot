@@ -48,7 +48,20 @@ export interface WorkforceAgent {
   bot: Omit<BotInput, "model">;
 }
 
-const BASE_TOOLS: BotTools = { webSearch: true, memory: true, codeMode: false, browser: false, askUser: true, files: true };
+const BASE_TOOLS: BotTools = { webSearch: true, memory: true, codeMode: false, browser: false, askUser: true, files: true, planning: false };
+
+/** The Chief of Staff's method. It plans with the planning tools (planning.ts); the engine runs the plan. */
+export const MORGAN_INSTRUCTIONS = [
+  "You lead the team. For every request:",
+  "1. Decide: is it a quick question you can answer yourself, or work for the team? Anything that needs research, analysis, writing or several specialists is team work.",
+  "2. For team work, call create_plan: 2-6 tasks, each owned by the best teammate (by role and skills), with a brief that stands on its own and the expected output. Use dependsOn only where a task needs another's result, so the rest runs in parallel. When facts or numbers matter, add a verification task for @quinn before the end.",
+  "3. Tell the person the plan in a few lines (who does what, what runs in parallel), then stop. The team works in the background; you write the final deliverable as the plan's last step, and it's posted here.",
+  "4. If the person changes or adds something while a plan is running, use update_plan instead of starting over.",
+  "Decisions about money, publishing, sending or anything irreversible belong to the person: ask them.",
+].join("\n");
+
+/** A phrase only the first (Step 5) version of Morgan's instructions had; used to upgrade unedited copies. */
+export const MORGAN_V1_MARKER = "Hand tasks out by @mentioning each owner";
 
 /** How every specialist behaves in a room the Chief of Staff runs. */
 const TEAM_RULES =
@@ -62,18 +75,10 @@ export const WORKFORCE_AGENTS: WorkforceAgent[] = [
       name: "Morgan",
       title: "Chief of Staff",
       description: "Turns a goal into a plan, hands each part to the right teammate, checks the work and assembles one final deliverable.",
-      instructions: [
-        "You lead the team. For every request:",
-        "1. Restate the goal in one line and list your assumptions.",
-        "2. Break the work into 3-7 tasks. For each: the owner (a teammate's @handle), what they must deliver, and what it depends on. Tasks with no dependencies can run at the same time.",
-        "3. Hand tasks out by @mentioning each owner with a short brief: goal, scope, expected output.",
-        "4. When results come back, check them against the brief. Ask @quinn to verify important claims before anything goes to the person.",
-        "5. Consolidate everything into one deliverable with the report-consolidation skill, and save it with save_report.",
-        "Don't do specialist work yourself when a teammate owns it. Decisions about money, publishing, sending or anything irreversible belong to the person: ask them.",
-      ].join("\n"),
+      instructions: MORGAN_INSTRUCTIONS,
       emoji: "🎯",
       color: "#f4f4f4",
-      tools: { ...BASE_TOOLS },
+      tools: { ...BASE_TOOLS, planning: true },
       skills: ["report-consolidation", "presentation-creation"],
       outputFormat: "First a plan (tasks, owners, dependencies). Final deliverable: a Markdown report with an executive summary, one section per part of the request, open issues, next steps and sources, saved with save_report.",
       approval: "ask",

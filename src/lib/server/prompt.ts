@@ -1,5 +1,6 @@
 import type { Bot } from "@/lib/shared/types";
 import { memoryForPrompt } from "./memory-files";
+import type { SharedMemory } from "./memory-layers";
 import { listSkills } from "./skills";
 
 /**
@@ -19,7 +20,31 @@ function skillsSection(skillIds: string[]): string {
   ].join("\n");
 }
 
-export function systemPrompt(bot: Bot, capabilities: string[], toolInstructions: string[]): string {
+/** What a turn adds to the prompt beyond the bot's own settings (read fresh on every turn by runtime.ts). */
+export interface PromptContext {
+  /** The shared memory layers for this conversation. */
+  shared?: SharedMemory;
+  /** Extra sections, e.g. the Chief of Staff's team list and active plan. */
+  extraSections?: string[];
+}
+
+/** The shared memory layers, each under its own heading. Empty layers are left out. */
+function sharedMemorySections(shared: SharedMemory): string[] {
+  const sections: string[] = [];
+  // "Every reply, even a one-liner" because a fallback model (Groq gpt-oss-120b) was seen listing a
+  // preference correctly yet leaving it out of a one-line tagline. The newest lines may be hand edits.
+  if (shared.user) {
+    sections.push(
+      `## About the person (shared memory: their preferences)\nApply these to every reply, even a one-line one, unless the person says otherwise in this conversation. Check your reply against them before you send it. They may have changed since your earlier replies; this list is current.\n\n${shared.user}`,
+    );
+  }
+  if (shared.project?.text) sections.push(`## Current project: ${shared.project.name} (shared memory)\n\n${shared.project.text}`);
+  if (shared.decisions) sections.push(`## Team decisions (shared memory, newest last)\n\n${shared.decisions}`);
+  if (shared.room?.text) sections.push(`## Room ${shared.room.name} (shared memory of this room)\n\n${shared.room.text}`);
+  return sections;
+}
+
+export function systemPrompt(bot: Bot, capabilities: string[], toolInstructions: string[], context: PromptContext = {}): string {
   const today = new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
   const sections: string[] = [];
 
@@ -50,13 +75,20 @@ export function systemPrompt(bot: Bot, capabilities: string[], toolInstructions:
     sections.push(`## Your output format\nUnless the person asks for something else, shape your answers like this:\n${bot.outputFormat.trim()}`);
   }
 
+  sections.push(...(context.extraSections ?? []));
+
+  // Shared memory first, so the bot's own notes (below) can refine it. Every bot sees the shared layers,
+  // even without the memory tool: they are the team's common knowledge.
+  if (context.shared) sections.push(...sharedMemorySections(context.shared));
+
   if (bot.tools.memory) {
     const { text, truncated } = memoryForPrompt(bot.id);
     sections.push(
       [
         "## Your memory (MEMORY.md)",
         "These are your own notes from earlier conversations. Use them; don't recite them.",
-        "Save durable facts with memory_add (preferences, decisions, ongoing projects). Fix or remove stale lines with memory_edit. Never store passwords or keys.",
+        'Remember durable facts with memory_add and say why. Pick the scope: the person\'s preferences go to "user" (every teammate sees them), facts about the current project to "project", important decisions to "decisions", things only this room needs to "room", your own working notes to "mine". Fix or remove stale lines with memory_edit. Never store passwords or keys.',
+        "If a memory above was corrected (it now says something different from what you remember), the file is right: follow it.",
         "",
         text || "(empty so far)",
         truncated ? "\n(MEMORY.md is longer than this; older lines are cut off. Tidy it with memory_edit.)" : "",

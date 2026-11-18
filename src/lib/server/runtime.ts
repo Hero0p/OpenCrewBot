@@ -10,7 +10,7 @@ import { Memory } from "@mastra/memory";
 import { randomUUID } from "node:crypto";
 import type { Bot, ChatMessage, ConversationId, Part, RouteNote } from "@/lib/shared/types";
 import { MASTRA_DB_URL, OWNER_ID, isMock } from "./config";
-import { conversationGeneration, getBot, saveMessage } from "./db";
+import { conversationGeneration, getBot, listBots, saveMessage } from "./db";
 import { publish } from "./bus";
 import { costUsd, findModel } from "./models";
 import { answeringModelReporter, modelStepRetry, resolveModelChain, toMastraModels } from "./model-chain";
@@ -20,6 +20,10 @@ import { ACTION_CATEGORIES, applyPermissionRules, permissionRules } from "./perm
 import { autoActionsInLast24h, expirePendingFor, recordApprovalRequest, recordLimitReached, recordToolRun } from "./approvals";
 import { buildConnectorTools, connectionsVersion } from "./connectors";
 import { systemPrompt } from "./prompt";
+import { conversationIdOf } from "./request-context";
+import { conversationContext } from "./conversation-context";
+import { sharedMemoryFor } from "./memory-layers";
+import { mockPlan, planningSections } from "./planning";
 import { buildTools, toolCategory, toolLabel, toolPreview, toolSources } from "./tools";
 
 // ── shared state that must survive Next.js hot reloads ─────────────────
@@ -95,20 +99,36 @@ async function createBrowser(bot: Bot): Promise<MastraBrowser | undefined> {
   }) as unknown as MastraBrowser;
 }
 
+/** Mock mode: how a planning bot's scripted model makes a plan (undefined for other bots). */
+function mockPlanFor(bot: Bot, team: Bot[]) {
+  return bot.tools.planning ? (goal: string) => mockPlan(goal, team, bot) : undefined;
+}
+
 async function buildRuntime(bot: Bot): Promise<BotRuntime> {
   const holder = { bot };
   const memory = new Memory({ storage: state.storage, options: { lastMessages: 40 } });
   const builtIn = buildTools(bot);
   const connectors = await buildConnectorTools(bot, `bot-${bot.id}-${Date.now()}`);
   const capabilities = [...builtIn.capabilities, ...connectors.capabilities];
+  // Mock mode only: a planning bot's scripted model needs the team to propose a plan.
+  const team = isMock() && bot.tools.planning ? await listBots() : [];
   // Tells the turn in progress which model answered, so a fallback shows up in chat and costs use its price.
   const reporter = answeringModelReporter((conversationId, modelId) => state.folders.get(key(conversationId, bot.id))?.noteAnsweringModel(modelId));
   const agent = new Agent({
     id: `bot-${bot.id}`,
     name: bot.name,
-    instructions: () => systemPrompt(holder.bot, capabilities, builtIn.instructions),
+    // Rebuilt on every model call: the latest saved bot, and the shared memory files as they are on disk
+    // right now, so an edit in the Memory Manager applies to the very next reply.
+    instructions: async ({ requestContext }) => {
+      const conversationId = conversationIdOf(requestContext);
+      const where = await conversationContext(conversationId);
+      return systemPrompt(holder.bot, capabilities, builtIn.instructions, {
+        shared: await sharedMemoryFor(where.room),
+        extraSections: await planningSections(holder.bot, conversationId),
+      });
+    },
     // The chain is rebuilt on every call from the latest saved bot, so a model switch applies to the next reply.
-    model: isMock() ? createMockModel(bot.name) : () => toMastraModels(resolveModelChain(holder.bot)),
+    model: isMock() ? createMockModel(bot.name, { plan: mockPlanFor(bot, team) }) : () => toMastraModels(resolveModelChain(holder.bot)),
     inputProcessors: isMock() ? [] : [reporter],
     // Retries a step whose model wrote a broken tool call (seen with Groq) or lost its connection.
     errorProcessors: [modelStepRetry()],

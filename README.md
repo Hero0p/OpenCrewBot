@@ -64,9 +64,35 @@ Put bots in a room and talk to all of them at once. @mention a bot to choose who
 
 _One message, three bots. Jev picks Atlas to answer, Atlas hands research to Scout and drafting to Quill. Staged example content._
 
+### Team plans (Chief of Staff)
+
+Give a bot the **Plan team work** tool (Morgan, the Chief of Staff, has it) and ask it for something bigger than one answer. It writes a plan with `create_plan`: tasks, an owner for each by @handle, the skill each needs, and which tasks need another's result. The plan is checked in code before anything starts (unknown teammates, missing skills, loops), then the **execution engine** runs it:
+
+- Tasks whose inputs are ready run **at the same time** (up to `OPENCREWBOT_MAX_PARALLEL_TASKS`, default 3); a task that needs another's result waits for it and gets it in its brief.
+- A failed task is **retried** after a short wait, then **handed to another agent with the same skill**, and only then marked failed. The rest of the plan carries on.
+- A task that runs longer than `OPENCREWBOT_TASK_TIMEOUT_MINUTES` (default 15) is stopped. You can cancel a task or the whole run, or retry a failed task.
+- The planner writes the **final deliverable** from every task's result, and it's posted in the chat where you asked. Progress notices ("✓ Vega finished …") appear there as the work happens. If the final write-up itself fails (for example, every model in the planner's chain is out of free quota), you still get each task's result, unedited, and **Retry** on the final task reopens the plan to write it once a model is available again.
+- In a room, a message that @mentions the planner goes to the planner alone, even if it names other teammates: they get their parts as tasks instead of also answering in the room.
+- If you change your mind halfway ("also cover pricing", "drop the survey"), the planner uses `update_plan` to cancel and add tasks without starting over.
+- A server restart doesn't lose the plan: interrupted tasks go back in the queue on the next start.
+
+**Give the planner a model with a large allowance.** The final write-up reads every task's result: in a 5-task test on November 18, 2026 it used about 44,000 input tokens. Gemini handles that on its free tier; Groq's free tier (8,000 tokens per minute) can't, so it only helps the planner as a fallback for short replies.
+
+Open **Tasks and runs** (list icon in the sidebar) to start a goal, watch each task's status, owner, attempts and timing on a timeline, open a task's own transcript, approve actions a task is waiting on, and read past runs. Each task runs in its own conversation (`task:<id>`), so its approvals appear in the Approval Centre like any other.
+
 ### Memory
 
-Each bot keeps its notes in one plain Markdown file, `data/workspaces/<botId>/MEMORY.md`. The first 200 lines load into the bot's prompt every turn. The bot adds and fixes lines with two small tools, `memory_add` and `memory_edit`, and you can read or edit the same file in the Memory tab, or in any editor. Anything that looks like a password, token or key is redacted before it's written.
+Memory is plain Markdown files you can read and edit, in five layers:
+
+| Layer | File | Who reads it |
+| --- | --- | --- |
+| **Your preferences** | `data/memory/user.md` | Every bot, every turn |
+| **Team decisions** | `data/memory/decisions.md` (latest entries) | Every bot |
+| **Project** | `data/memory/projects/<project>.md` (the active project) | Every bot |
+| **Room** | `data/memory/rooms/<roomId>.md` | Bots working in that room, and tasks started there |
+| **Agent** | `data/workspaces/<botId>/MEMORY.md` | That bot only |
+
+Team runs also leave an **execution history** file per run in `data/memory/history/`. A bot writes with `memory_add` (choosing the layer and saying why) and fixes a line with `memory_edit`. Every entry carries a small hidden stamp saying who wrote it, when, why and where (`<!-- by: Maya | when: … | why: … | in: … -->`); the stamps are shown in the **Memory Manager** (brain icon in the sidebar) and left out of the prompts. In the Memory Manager you can read and edit every file, pick the active project or create one. When you edit a file by hand, the bots follow the file. Anything that looks like a password, token or key is redacted before it's written.
 
 <div align="center">
 
@@ -78,7 +104,7 @@ Each bot keeps its notes in one plain Markdown file, `data/workspaces/<botId>/ME
 
 </div>
 
-_The Memory tab is the file itself. The panel refreshes live when the bot writes to it._
+_A bot's Memory tab is its own file (the agent layer). The panel refreshes live when the bot writes to it._
 
 ### Ask before acting
 
@@ -109,7 +135,8 @@ _Nothing happens until you choose. Staged example content._
 | Tool | What it does | Powered by |
 | --- | --- | --- |
 | Web search | Search, read pages and crawl sites, with sources shown under the answer | [Tavily](https://tavily.com) SDK (`@tavily/core`), with small tool schemas every model provider accepts |
-| Memory | Read and update the bot's own `MEMORY.md` | Local files |
+| Memory | Add and fix notes in a memory layer (the bot's own file, your preferences, the project, team decisions, the room) | Local files |
+| Plan team work | `create_plan`, `update_plan`, `plan_status`: break a request into tasks for teammates and run them through the execution engine | `engine.ts`, `planning.ts` |
 | Code mode | The model writes one TypeScript function that calls several tools at once, so multi-step questions take one round trip | Mastra Code Mode, in a QuickJS (WebAssembly) sandbox |
 | Browser | A real cloud browser for pages that need clicks, forms or JavaScript. Watch it live from the chat and click in to take over | [Browserbase](https://www.browserbase.com) via Mastra `AgentBrowser` |
 | Ask me | Pause and ask you a question with a card in chat | Mastra `ask_user` |
@@ -169,6 +196,8 @@ Add your keys to `.env`, then restart `pnpm dev`. Every key is optional:
 | `TYPESAFE_API_KEY` | Jev routing in Auto rooms. Without it, the room's lead answers. |
 | `JEV_MODEL` | Jev model id (default `jev-latest`). |
 | `OPENCREWBOT_DATA_DIR` | Where data lives (default `./data`). |
+| `OPENCREWBOT_MAX_PARALLEL_TASKS` | Optional. How many team-plan tasks run at the same time, across all runs (default 3; free-tier rate limits are why it's small). |
+| `OPENCREWBOT_TASK_TIMEOUT_MINUTES` | Optional. How long one attempt of a task may run before it's stopped (default 15; waiting for your approval counts). |
 | `OPENCREWBOT_SKILLS_DIR` | Where the skills library lives (default `./skills`). |
 | `OPENCREWBOT_ALLOWED_HOSTS` | Extra host names the API answers to, comma-separated. Only for deliberate setups behind your own sign-in. |
 
@@ -178,12 +207,13 @@ Add your keys to `.env`, then restart `pnpm dev`. Every key is optional:
 - `ask me something` shows a question card and resumes when you answer.
 - `open https://example.com` shows an approval card first, in a bot with the Browser tool on.
 - `search for Nebius Token Factory` runs a real Tavily search once `TAVILY_API_KEY` is set.
+- Any request to Morgan creates a small team plan; its tasks return results clearly labelled **SIMULATED**, and the final deliverable is posted back, so you can watch the engine and the Tasks and runs panel work.
 
 ## Data and privacy
 
-Bots, rooms and the chat transcript are stored in SQLite at `data/opencrewbot.db`. Mastra keeps each bot's model-side thread history in `data/mastra.db`. Each bot's memory is `data/workspaces/<botId>/MEMORY.md`. Nothing leaves your machine except calls to the services you configure:
+Bots, rooms, the chat transcript, and team runs and their tasks are stored in SQLite at `data/opencrewbot.db`. Mastra keeps each bot's model-side thread history in `data/mastra.db`. Each bot's memory is `data/workspaces/<botId>/MEMORY.md`; shared memory (preferences, decisions, projects, rooms, run history) is in `data/memory/`. Nothing leaves your machine except calls to the services you configure:
 
-- **Your model providers** (Google, Groq, OpenRouter, Nebius: whichever a bot's model and fallbacks use) receive each bot's system prompt (including its `MEMORY.md`), the conversation, and tool results. Free tiers may use this data to improve their products; check each provider's terms.
+- **Your model providers** (Google, Groq, OpenRouter, Nebius: whichever a bot's model and fallbacks use) receive each bot's system prompt (including its `MEMORY.md` and the shared memory it reads), the conversation, and tool results. Free tiers may use this data to improve their products; check each provider's terms.
 - **Tavily** receives search queries and the URLs a bot reads or crawls.
 - **Browserbase** runs the cloud browser, so it sees the pages a bot visits and anything typed into them. Sessions are released when a bot is reset or deleted, and expire after `BROWSERBASE_SESSION_MINUTES`.
 - **Jev** receives the room name, member names and descriptions, the last few room messages and the new message, when an Auto room has no @mention.
@@ -203,13 +233,16 @@ It assumes one local owner and has no sign-in. To keep it that way, `pnpm dev` a
 | Connections | Composio apps with one-click sign-in, your own MCP servers (GitHub preset), per-bot access, approval for actions |
 | Chat | Streaming Markdown, reasoning, tool steps with sources, Stop, and messages queued while a bot is busy |
 | Rooms | @mentions, `@everyone`, Auto routing with Jev, Lead and Everyone modes, bot-to-bot hand-offs |
-| Memory | One `MEMORY.md` per bot, loaded every turn, editable in the app, with secret redaction |
+| Memory | Five layers (your preferences, team decisions, project, room, agent) plus run history; who/when/why on every entry; Memory Manager to read and edit them; secret redaction |
+| Team plans | Chief of Staff plans with checked owners and skills; parallel tasks, retry, hand-off to a teammate with the same skill, timeout, cancel, change of plan, restart recovery; Tasks and runs panel with a timeline |
 | Approvals | Allow once / Deny cards for browser actions, plus ask-you question cards that resume the run |
 | Browser | Browserbase session per bot, embedded live view with takeover, release on reset |
 | Code mode | Multi-tool TypeScript in a QuickJS sandbox with no filesystem or network access |
 | Mock mode | A scripted model that exercises the real tools, approvals and streaming without any keys |
 
 **What's been verified.** On October 13 and 14, 2026, these were tested locally with the mock model: streaming, tool calls, memory writes, approvals (Allow, Deny, and Stop while waiting), question cards, room @mentions and hand-offs, restart recovery, and the production build. The Browserbase path was tested by driving a local Chrome over the same CDP connection. MCP servers were tested against DeepWiki's public server (add, test, and loading its tools into a bot). The live model list comes from Token Factory, and Mastra's router was checked to accept every model on it. **Still to verify with live services:** Composio sign-in and app actions, Browserbase sessions, Jev routing, and how reliably each open model calls tools.
+
+**OpenCrewBot 2.0, November 18, 2026, with live free-tier models (Gemini, Groq, OpenRouter):** a Chief of Staff plan in a direct chat (research → fact-check → final report); a plan started in a room with two tasks running at the same time, changed mid-run with `update_plan`; the final write-up failing on quota, its retry, the unedited fallback, and the plan reopened and completed on another model; a preference taught to one agent, remembered by another after a restart, and a hand edit in the Memory Manager followed on the next reply. The Tasks and runs panel and the Memory Manager were checked in a browser. Reassignment to a teammate with the same skill, timeouts and restart recovery mid-run are covered by automated tests, not yet seen live.
 
 ### Extending it
 
@@ -225,7 +258,11 @@ It assumes one local owner and has no sign-in. To keep it that way, `pnpm dev` a
 - `src/lib/server/runtime.ts`: the harness glue. One `AgentController` per bot, one session per conversation, events folded into chat messages.
 - `src/lib/server/tools.ts`: which tools a bot gets, their approval categories, and how each looks in chat.
 - `src/lib/server/rooms.ts` and `jev.ts`: room routing, catch-up context and hand-offs.
-- `src/lib/server/memory-files.ts`: `MEMORY.md` reads, writes, edits and redaction.
+- `src/lib/server/memory-files.ts`: plain file helpers for memory: atomic writes, appends, one-line edits and redaction.
+- `src/lib/server/memory-layers.ts`: the memory layers (which file each is), who/when/why stamps, projects, and the shared memory each bot reads.
+- `src/lib/server/engine.ts`: the execution engine: a run's task graph, parallel waves, retry, reassignment, timeout, cancel, change of plan and restart recovery.
+- `src/lib/server/task-runner.ts`: how the engine runs one task (an agent turn in the task's own conversation) and writes run history.
+- `src/lib/server/planning.ts`: the Chief of Staff's tools (`create_plan`, `update_plan`, `plan_status`) and what a planner sees about its team.
 - `src/lib/server/browserbase.ts`: creates, announces and releases each bot's Browserbase session.
 - `src/lib/shared/providers.ts`: the model providers (names, env vars, recommended models) and model-id helpers.
 - `src/lib/server/providers.ts`: which providers have a key, and the default model.
@@ -240,6 +277,7 @@ It assumes one local owner and has no sign-in. To keep it that way, `pnpm dev` a
 - `src/lib/server/permissions.ts`: the three permission levels, turned into one policy per tool category for Mastra to enforce.
 - `src/lib/server/approvals.ts`: the approval and audit trail (requests, decisions, tool runs, the daily limit count).
 - `src/components/ApprovalCentre.tsx`: waiting requests, decision history and the audit log.
+- `src/components/RunsPanel.tsx` and `MemoryPanel.tsx`: Tasks and runs (timeline, task transcripts, history) and the Memory Manager.
 - `tests/`: automated tests (`pnpm test`), including a real Mastra session proving rejected actions never run.
 - `src/components/`: the chat interface. `src/lib/client/store.ts` folds server events into state.
 

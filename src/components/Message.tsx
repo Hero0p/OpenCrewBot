@@ -238,6 +238,15 @@ function routeLabel(message: ChatMessage): string | null {
 }
 
 export function MessageItem({ message, bot, showAuthor }: { message: ChatMessage; bot?: Bot; showAuthor: boolean }) {
+  // Progress notices from the execution engine ("✓ Iris finished …"): a quiet centred line.
+  if (message.role === "notice") {
+    const text = message.parts.map((p) => (p.kind === "text" ? p.text : "")).join(" ");
+    return (
+      <p className="mx-auto max-w-[80%] py-0.5 text-center text-[12.5px] text-faint">
+        {text} <span className="text-[11px]">· {timeLabel(message.createdAt)}</span>
+      </p>
+    );
+  }
   if (message.role === "user") {
     const text = message.parts.map((p) => (p.kind === "text" ? p.text : "")).join("");
     return (

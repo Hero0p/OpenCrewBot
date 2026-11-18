@@ -6,41 +6,60 @@ import type { ToolCategory } from "@mastra/core/agent-controller";
 import { tavily } from "@tavily/core";
 import { QuickJsCodeModeTransport } from "@mastra/quickjs";
 import { z } from "zod";
-import type { Bot, Source, ToolInfo } from "@/lib/shared/types";
-import { appendMemory, editMemory } from "./memory-files";
+import type { Bot, MemoryKeyInput, Source, ToolInfo } from "@/lib/shared/types";
+import { BOT_MEMORY_SCOPES, correct, memoryKeyText, provenanceTime, remember, resolveMemoryTarget } from "./memory-layers";
+import { conversationIdOf } from "./request-context";
 import { publish } from "./bus";
 import { keys } from "./config";
 import { mcpServerNames } from "./connectors";
 import { getSkill } from "./skills";
 import { MAX_ROWS, fileUrl, listFiles, readSpreadsheet, saveChart, saveReport } from "./files";
 import { CHART_LIMITS, renderChartSvg } from "./charts";
+import { planningTools } from "./planning";
 
 export const CODE_MODE_TOOL = "execute_typescript";
 
-function memoryTools(botId: string): ToolsInput {
+const MEMORY_SCOPE_HELP =
+  'Where it belongs: "mine" (your own notes), "user" (the person\'s preferences, shared with every teammate), "project" (facts about the current project, shared), "decisions" (an important decision, shared), "room" (shared with this room).';
+
+/** Tell open views that a memory file changed. */
+function announceMemoryChange(key: MemoryKeyInput) {
+  if (key.scope === "agent") publish({ type: "memory-changed", botId: key.id });
+  publish({ type: "memory-files-changed", key: memoryKeyText(key) });
+}
+
+/** memory_add / memory_edit: write to one of the memory layers, recording who, when, why and where. */
+function memoryTools(bot: Bot): ToolsInput {
   return {
     memory_add: createTool({
       id: "memory_add",
-      description:
-        "Save one durable fact to your MEMORY.md (a preference, a decision, something about the person or your ongoing work). One short line per call.",
+      description: "Remember one durable fact (a preference, a decision, a fact about the project or your work), with the reason. One short line per call.",
       inputSchema: z.object({
         note: z.string().min(1).describe("The fact, as one short sentence."),
-        section: z.string().optional().describe("Optional heading to file it under, e.g. 'About the person' or 'Projects'."),
+        scope: z.enum(BOT_MEMORY_SCOPES).describe(MEMORY_SCOPE_HELP),
+        why: z.string().min(1).describe('Why it\'s worth remembering, e.g. "the person said so" or "decided after comparing prices".'),
       }),
-      execute: async ({ note, section }) => {
-        appendMemory(botId, note, section);
-        publish({ type: "memory-changed", botId });
-        return { saved: true };
+      execute: async ({ note, scope, why }, context) => {
+        const target = await resolveMemoryTarget(bot, scope, conversationIdOf(context.requestContext));
+        remember(target.key, note, { by: bot.name, when: provenanceTime(), why, in: target.label }, { title: target.title });
+        announceMemoryChange(target.key);
+        return { saved: true, where: target.title };
       },
     }),
     memory_edit: createTool({
       id: "memory_edit",
       description:
-        "Fix or remove a line in your MEMORY.md. `find` must match the current text exactly once; use an empty `replace` to delete it.",
-      inputSchema: z.object({ find: z.string().min(1), replace: z.string() }),
-      execute: async ({ find, replace }) => {
-        const result = editMemory(botId, find, replace);
-        if (result.ok) publish({ type: "memory-changed", botId });
+        "Correct or remove a remembered line. `find` must match the current text exactly once; use an empty `replace` to delete it. The corrected line records who changed it and why.",
+      inputSchema: z.object({
+        find: z.string().min(1),
+        replace: z.string(),
+        scope: z.enum(BOT_MEMORY_SCOPES).describe(MEMORY_SCOPE_HELP),
+        why: z.string().min(1).describe("Why it changed."),
+      }),
+      execute: async ({ find, replace, scope, why }, context) => {
+        const target = await resolveMemoryTarget(bot, scope, conversationIdOf(context.requestContext));
+        const result = correct(target.key, find, replace, { by: bot.name, when: provenanceTime(), why, in: target.label });
+        if (result.ok) announceMemoryChange(target.key);
         return result;
       },
     }),
@@ -206,7 +225,7 @@ export function buildTools(bot: Bot): BotToolset {
     capabilities.push("Web search is switched on for you, but no Tavily key is set yet, so you can't search right now. Say so if asked.");
   }
   if (bot.tools.memory) {
-    Object.assign(tools, memoryTools(bot.id));
+    Object.assign(tools, memoryTools(bot));
   }
   if (bot.tools.files) {
     Object.assign(tools, fileTools());
@@ -216,6 +235,10 @@ export function buildTools(bot: Bot): BotToolset {
   }
   if (bot.skills.length) {
     Object.assign(tools, skillTools(bot.skills));
+  }
+  if (bot.tools.planning) {
+    Object.assign(tools, planningTools(bot));
+    capabilities.push("Plan and run team work with create_plan, update_plan and plan_status (see \"How you run team work\").");
   }
   // Code Mode is added last, so the program it writes can call every tool above (e.g. read_spreadsheet).
   if (bot.tools.codeMode) {
@@ -249,6 +272,9 @@ export function toolCategory(toolName: string): ToolCategory | null {
   if (["web_search", "read_page", "crawl_site", "ask_user", CODE_MODE_TOOL, "load_skill", "list_files", "read_spreadsheet"].includes(toolName)) return "read";
   // These write only inside OpenCrewBot's own Files folder, like memory does.
   if (["make_chart", "save_report"].includes(toolName)) return "edit";
+  // Planning starts and changes team work inside OpenCrewBot; each task's own external actions are gated by its agent's level.
+  if (["create_plan", "update_plan"].includes(toolName)) return "edit";
+  if (toolName === "plan_status") return "read";
   // Composio: looking up actions is free; running them ("multi execute", the remote workbench) asks.
   if (toolName.startsWith("COMPOSIO_")) {
     return /SEARCH_TOOLS|GET_TOOL_SCHEMAS|MANAGE_CONNECTIONS/.test(toolName) ? "read" : "mcp";
@@ -284,6 +310,9 @@ export const TOOL_CATALOG: ToolInfo[] = [
   { name: CODE_MODE_TOOL, label: "Run code", description: "Runs TypeScript in a sandbox (no files, no network) that can call the bot's other tools; for exact maths.", category: "read", enabledBy: "codeMode" },
   { name: "browser_goto", label: "Browser actions", description: "Opens pages, clicks and types in a Browserbase cloud browser (browser_goto, browser_click, browser_type…).", category: "execute", enabledBy: "browser", needsKey: "BROWSERBASE_API_KEY" },
   { name: "browser_snapshot", label: "Browser reading", description: "Reads what the browser shows (snapshots, scrolling, tabs).", category: "read", enabledBy: "browser", needsKey: "BROWSERBASE_API_KEY" },
+  { name: "create_plan", label: "Start a team plan", description: "Breaks a request into tasks for teammates and starts the execution engine (Chief of Staff).", category: "edit", enabledBy: "planning" },
+  { name: "update_plan", label: "Change the team plan", description: "Cancels and adds tasks in the running plan, e.g. after a new instruction.", category: "edit", enabledBy: "planning" },
+  { name: "plan_status", label: "Check the team plan", description: "Reads each task's status, attempts, errors and results.", category: "read", enabledBy: "planning" },
   { name: "ask_user", label: "Ask me", description: "Pauses and asks you a question with a card in chat.", category: "read", enabledBy: "askUser" },
   { name: "COMPOSIO_SEARCH_TOOLS", label: "Find app actions", description: "Looks up what a connected app (GitHub, Notion, Slack…) can do.", category: "read", enabledBy: "connections", needsKey: "COMPOSIO_API_KEY" },
   { name: "COMPOSIO_MULTI_EXECUTE_TOOL", label: "Run app actions", description: "Runs actions in connected apps: create an issue, send a message, add a page…", category: "mcp", enabledBy: "connections", needsKey: "COMPOSIO_API_KEY" },
@@ -332,9 +361,9 @@ export function toolLabel(name: string, args: unknown): { label: string; detail?
     case "crawl_site":
       return { label: "Crawled", detail: host(a.url) };
     case "memory_add":
-      return { label: "Saved to memory", detail: String(a.note ?? "") };
+      return { label: `Saved to memory (${String(a.scope ?? "mine")})`, detail: String(a.note ?? "") };
     case "memory_edit":
-      return { label: "Updated memory" };
+      return { label: `Updated memory (${String(a.scope ?? "mine")})` };
     case CODE_MODE_TOOL:
       return { label: "Ran code" };
     case "ask_user":
@@ -349,6 +378,12 @@ export function toolLabel(name: string, args: unknown): { label: string; detail?
       return { label: "Made a chart", detail: String(a.title ?? "") };
     case "save_report":
       return { label: "Saved a report", detail: String(a.title ?? "") };
+    case "create_plan":
+      return { label: "Started a team plan", detail: String(a.title ?? "") };
+    case "update_plan":
+      return { label: "Changed the team plan", detail: String(a.note ?? "") };
+    case "plan_status":
+      return { label: "Checked the team plan" };
     default:
       if (name.startsWith("browser_")) {
         const action = name.slice("browser_".length).replace(/_/g, " ");

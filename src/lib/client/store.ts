@@ -23,6 +23,10 @@ export interface AppState {
   connectionsVersion: number;
   /** Bumped when an approval is requested or decided, so the Approval Centre and its badge refetch. */
   approvalsVersion: number;
+  /** Bumped when a run or task changes, so the Task Dashboard refetches. */
+  runsVersion: number;
+  /** Bumped when any memory file changes, so the Memory Manager refetches. */
+  memoryFilesVersion: number;
 }
 
 export const initialState: AppState = {
@@ -39,6 +43,8 @@ export const initialState: AppState = {
   liveViews: {},
   connectionsVersion: 0,
   approvalsVersion: 0,
+  runsVersion: 0,
+  memoryFilesVersion: 0,
 };
 
 export type Action =
@@ -171,6 +177,10 @@ function applyEvent(state: AppState, event: ServerEvent): AppState {
       return { ...state, connectionsVersion: state.connectionsVersion + 1 };
     case "approvals-changed":
       return { ...state, approvalsVersion: state.approvalsVersion + 1 };
+    case "runs-changed":
+      return { ...state, runsVersion: state.runsVersion + 1 };
+    case "memory-files-changed":
+      return { ...state, memoryFilesVersion: state.memoryFilesVersion + 1 };
     case "bots-changed":
     case "rooms-changed":
       // The provider refetches the bootstrap payload for these.

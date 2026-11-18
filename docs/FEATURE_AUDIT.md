@@ -74,12 +74,12 @@ Approve/Deny card clicked
 ### Module A: Intelligent Chief of Staff
 | Requirement | Original status | Evidence | What we add |
 |---|---|---|---|
-| Agent routing | 🟡 Partial | `rooms.ts` `decideResponders()`: @mention → Jev → room lead → everyone | 🟡 **Step 5:** a Chief of Staff agent (Morgan) leads the 5 workforce rooms: it plans and hands work out with @mentions, using the original hand-off mechanism. The real planner and task engine come in Steps 8-9 |
-| Understands requests, breaks them into tasks | ❌ Missing | Atlas (the "Planning" seed bot) only *writes* a plan as chat text; nothing executes it | Planned |
-| Picks agents by capability | 🟡 Partial | Jev picks the best *single responder* from bot descriptions; this is not task assignment | Planned |
-| Dependencies, parallel tasks | ❌ Missing | Room bots run strictly one after another (`while (queue.length)` loop) | Planned |
-| Monitoring, failure handling | ❌ Missing | A failed turn just ends with an error message | Planned |
-| Consolidated final deliverable | ❌ Missing | — | Planned |
+| Agent routing | 🟡 Partial | `rooms.ts` `decideResponders()`: @mention → Jev → room lead → everyone | ✅ **Step 5 + 9:** Morgan, the Chief of Staff, leads the 5 workforce rooms. Quick questions it answers itself; team work becomes a plan (`planning.ts`) |
+| Understands requests, breaks them into tasks | ❌ Missing | Atlas (the "Planning" seed bot) only *writes* a plan as chat text; nothing executes it | ✅ **Step 9:** `create_plan` tool: tasks with a brief, expected output, owner (@handle), skill and dependencies, run by the engine |
+| Picks agents by capability | 🟡 Partial | Jev picks the best *single responder* from bot descriptions; this is not task assignment | ✅ **Step 9:** the planner sees the team roster with roles and skills; the plan is checked in code (unknown teammate, planner assigned to itself, owner lacking the skill: the error names who has it) |
+| Dependencies, parallel tasks | ❌ Missing | Room bots run strictly one after another (`while (queue.length)` loop) | ✅ **Step 8:** `engine.ts` runs every task whose dependencies have ended, up to `OPENCREWBOT_MAX_PARALLEL_TASKS` at once; cycles are rejected |
+| Monitoring, failure handling | ❌ Missing | A failed turn just ends with an error message | ✅ **Step 8:** retry with backoff, then hand-off to a teammate with the same skill, timeout, cancel; progress notices in the chat; `plan_status` and `update_plan` for the planner |
+| Consolidated final deliverable | ❌ Missing | — | ✅ **Step 8-9:** every run ends with a final task for the planner, in its output format; posted where the run started and saved in run history |
 
 ### Module B: Dynamic agent creation
 | Requirement | Original status | Evidence | What we add |
@@ -98,36 +98,36 @@ Approve/Deny card clicked
 | Requirement | Original status | Evidence | What we add |
 |---|---|---|---|
 | Rooms | ✅ Implemented | `rooms` table, `RoomForms.tsx`, one seeded room ("Studio") | ✅ **Step 5:** 5 more rooms, each led by the Chief of Staff (Market Intelligence, Marketing Campaign, Business Analysis, Dev Team, Operations) |
-| Delegation between agents | 🟡 Partial | A bot can @mention a teammate in its reply; up to 2 hops (`MAX_HANDOFF_DEPTH = 2`) | Planned |
+| Delegation between agents | 🟡 Partial | A bot can @mention a teammate in its reply; up to 2 hops (`MAX_HANDOFF_DEPTH = 2`) | 🟡 **Step 9:** the planner delegates as plan tasks. A message that @mentions the planner goes to it alone, and a reply that started or changed a plan creates no @mention hand-offs (seen live: without this, teammates did their task twice, once as a task and once in the room). Structured delegate / ask / verify messages come in Step 10 |
 | Ask questions / share research / challenge / request verification | ❌ Missing | Only free-text @mentions; no structured message types | Planned |
-| Parallel collaboration | ❌ Missing | Sequential only | Planned |
-| Resume after interruption | 🟡 Partial | The transcript survives a restart, but in-flight turns are marked "Interrupted by a server restart" and never resumed (`service.ts` `sweepInterrupted()`) | Planned |
-| Loop prevention | 🟡 Partial | Hop limit of 2 and no duplicate bot in the queue. No turn budget, no cost budget, no cycle detection beyond that | Planned |
-| Shared room context | 🟡 Partial | Each bot gets the last ≤30 room lines it hasn't seen (`catchUp()`); there is no shared room memory | Planned |
+| Parallel collaboration | ❌ Missing | Sequential only | ✅ **Step 8-9:** a plan's independent tasks run at the same time, each agent in its own task conversation; a task that needs another's result gets it as input |
+| Resume after interruption | 🟡 Partial | The transcript survives a restart, but in-flight turns are marked "Interrupted by a server restart" and never resumed (`service.ts` `sweepInterrupted()`) | 🟡 **Step 8:** team runs resume: on start, `recoverRuns()` puts interrupted tasks back in the queue (plain chat turns still don't resume). The planner can change a running plan with `update_plan` |
+| Loop prevention | 🟡 Partial | Hop limit of 2 and no duplicate bot in the queue. No turn budget, no cost budget, no cycle detection beyond that | 🟡 **Step 8:** plans: cycle check, at most 8 tasks per plan, one active plan per conversation, no plans inside a task. Cost budget still planned |
+| Shared room context | 🟡 Partial | Each bot gets the last ≤30 room lines it hasn't seen (`catchUp()`); there is no shared room memory | ✅ **Step 7:** room memory file (`data/memory/rooms/<roomId>.md`) read by every bot in the room and by tasks started there |
 
 ### Module D: Autonomous task execution
 | Requirement | Original status | Evidence | What we add |
 |---|---|---|---|
-| Execution engine | ❌ Missing | — (Mastra's built-in `task_*`, `submit_plan` and `subagent` tools are explicitly disabled in `runtime.ts`) | Planned |
-| Visible task plan | ❌ Missing | — | Planned |
-| Task ID, agent, dependencies, status, times, outputs, errors, approvals | ❌ Missing | — | Planned |
-| Retries / timeouts / recovery | ❌ Missing | — | Planned |
-| Cancellation | 🟡 Partial | **Stop** button aborts the conversation's running turns (`stopConversation()`, "stop epoch") | Extend |
-| Execution history | 🟡 Partial | Chat transcripts only | Planned |
+| Execution engine | ❌ Missing | — (Mastra's built-in `task_*`, `submit_plan` and `subagent` tools are explicitly disabled in `runtime.ts`) | ✅ **Step 8:** `engine.ts`: runs and tasks in SQLite (`runs`, `tasks` tables); every change is saved before the next step, so the database is the truth. Each task is a normal agent turn in its own conversation (`task-runner.ts`), with the agent's tools, skills, memory and permission level |
+| Visible task plan | ❌ Missing | — | ✅ **Step 8:** the planner reports the plan step by step in the chat; **Tasks and runs** panel shows every task on a timeline |
+| Task ID, agent, dependencies, status, times, outputs, errors, approvals | ❌ Missing | — | ✅ **Step 8:** all on the `Task` record and in the panel; "Needs your approval" when a task's action waits in the Approval Centre |
+| Retries / timeouts / recovery | ❌ Missing | — | ✅ **Step 8:** 2 attempts per agent with a 5 s / 20 s wait, then a teammate with the same skill; per-attempt timeout; restart recovery. If the final write-up fails, the task results are posted unedited and retrying the final task reopens the plan |
+| Cancellation | 🟡 Partial | **Stop** button aborts the conversation's running turns (`stopConversation()`, "stop epoch") | ✅ **Step 8:** cancel one task (its dependants carry on without it) or the whole run; retry a failed task |
+| Execution history | 🟡 Partial | Chat transcripts only | ✅ **Step 8:** past runs in the panel (with each task's transcript), plus a Markdown history file per run in `data/memory/history/` |
 
 ### Module E: Persistent memory
 | Requirement | Original status | Evidence | What we add |
 |---|---|---|---|
-| Markdown memory | ✅ Implemented | `memory-files.ts`: one `MEMORY.md` per bot, atomic writes | Keep |
-| Individual agent memory | ✅ Implemented | `memory_add` / `memory_edit` tools | Keep |
-| Shared room memory | ❌ Missing | — | Planned |
-| Project memory | ❌ Missing | — | Planned |
-| User preferences / decisions (shared) | ❌ Missing | Only inside each bot's own file | Planned |
-| Historical task context | ❌ Missing | — | Planned |
-| User can read and edit memory | ✅ Implemented | Memory tab in the inspector; `GET/PUT /api/bots/<id>/memory` | Extend to all memory files |
-| Survives restart | ✅ Implemented | Plain files on disk; re-read on **every** model call (`prompt.ts` is called per call) | Keep |
-| Edits apply immediately | ✅ Implemented | Same reason as above | Keep |
-| Provenance (what, when, why) | 🟡 Partial | `memory_add` appends the date only: `- note _(2026-11-17)_` | Planned |
+| Markdown memory | ✅ Implemented | `memory-files.ts`: one `MEMORY.md` per bot, atomic writes | Kept; `memory-files.ts` is now generic file helpers, `memory-layers.ts` knows the layers |
+| Individual agent memory | ✅ Implemented | `memory_add` / `memory_edit` tools | ✅ **Step 7:** same tools, now with a `scope` (`mine`, `user`, `project`, `decisions`, `room`) and a required `why` |
+| Shared room memory | ❌ Missing | — | ✅ **Step 7:** `data/memory/rooms/<roomId>.md` |
+| Project memory | ❌ Missing | — | ✅ **Step 7:** `data/memory/projects/<slug>.md`, one active project (MeetUniversity seeded), switchable in the Memory Manager |
+| User preferences / decisions (shared) | ❌ Missing | Only inside each bot's own file | ✅ **Step 7:** `user.md` and `decisions.md`, read by every bot every turn |
+| Historical task context | ❌ Missing | — | ✅ **Step 8:** `data/memory/history/<runId>.md` per run; the planner also sees its last finished plan's result |
+| User can read and edit memory | ✅ Implemented | Memory tab in the inspector; `GET/PUT /api/bots/<id>/memory` | ✅ **Step 7:** **Memory Manager** for every file (`/api/memory`, `/api/memory/file`); run history is read-only |
+| Survives restart | ✅ Implemented | Plain files on disk; re-read on **every** model call (`prompt.ts` is called per call) | Kept for every layer (the shared files are read in the agent's instructions function) |
+| Edits apply immediately | ✅ Implemented | Same reason as above | Kept; the prompt says a hand edit wins over the bot's own memory of a conversation |
+| Provenance (what, when, why) | 🟡 Partial | `memory_add` appends the date only: `- note _(2026-11-17)_` | ✅ **Step 7:** every entry is stamped `<!-- by: … \| when: … \| why: … \| in: … -->`; corrections restamp the line; hand edits are stamped "by: you". Stamps are shown in the Memory Manager and stripped from prompts |
 | Secret redaction | ✅ Implemented | `redactSecrets()` strips keys/tokens before writing | Keep |
 
 ### Module F: Skills and tools
@@ -189,14 +189,14 @@ Approve/Deny card clicked
 | Individual agent conversations | ✅ | Direct chats (`dm:<botId>`) |
 | Multi-agent rooms | ✅ (basic) | Rooms (`room:<roomId>`) |
 | Dynamic agent creation | 🟡 | "New bot" form only |
-| Memory manager | 🟡 | One bot's Memory tab at a time |
+| Memory manager | 🟡 → ✅ (Step 7) | **Memory Manager** panel (brain icon): every layer's file with who/when/why per entry, edit and save, active project picker and new project |
 | Skills and tools manager | 🟡 → ✅ (Step 6) | **Skills and tools** panel: skills library (read each procedure, see which bots use it), tool catalog with permission behaviour and key status, Files folder with upload |
-| Task execution dashboard | ❌ | — |
+| Task execution dashboard | ❌ → ✅ (Step 8) | **Tasks and runs** panel (list icon): new goal, each task's status, owner, attempts, dependencies, duration, output and transcript on a timeline; cancel and retry; tasks waiting for approval |
 | Approval centre | 🟡 → ✅ (Step 4) | Approval Centre panel (shield icon): waiting requests with full previews, history, audit log |
 | Integration manager | ✅ | Connections panel (Composio apps + MCP servers) |
 | Model configuration | 🟡 → ✅ (Step 2) | Per-bot model picker across 4 providers, fallback chain shown under it, provider keys listed in Settings |
 | Scheduled workflows | ❌ | — |
-| Execution history | 🟡 | Chat transcripts only |
+| Execution history | 🟡 → ✅ (Step 8) | Past runs in **Tasks and runs** (events, results, transcripts) and one history file per run in the Memory Manager |
 
 ## 4. Minimum acceptance criteria (assignment section 7): starting point
 
@@ -205,16 +205,16 @@ Approve/Deny card clicked
 | Configurable agents | 8 | 3 seeded (Scout, Quill, Atlas); more can be added by hand → **13 (Step 5)** |
 | Collaboration rooms | 4 | 1 seeded (Studio) → **6 (Step 5)** |
 | Dynamic agent creation | Working | Form only |
-| Parallel task execution | Working | ❌ |
+| Parallel task execution | Working | ❌ → **✅ (Step 8)** |
 | Persistent individual memory | Working | ✅ |
-| Shared project memory | Working | ❌ |
+| Shared project memory | Working | ❌ → **✅ (Step 7)** |
 | Reusable skills | 8 | 0 → **11 (Step 6)** |
 | Working integrations | 3 | Unverified |
 | Permission levels | 3 | 2 → **3 (Step 4)** |
 | Scheduled workflows | Working | ❌ |
 | Approval centre | Working | 🟡 inline only → **✅ (Step 4)** |
-| Execution history | Working | 🟡 transcripts only |
-| Failure recovery | Demonstrated | 🟡 restart marks turns as interrupted; no retry |
+| Execution history | Working | 🟡 transcripts only → **✅ (Step 8)** |
+| Failure recovery | Demonstrated | 🟡 restart marks turns as interrupted; no retry → **✅ (Step 8), seen live on 2026-11-18:** the final write-up hit free-tier quota limits, was retried after 5 s, failed again, and the team's results were posted unedited; **Retry** reopened the plan and it completed on another model. Reassignment, timeout and restart recovery are covered by tests |
 | Business demonstrations | 7 | 0 |
 
 ---

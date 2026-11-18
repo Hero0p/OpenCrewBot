@@ -3,7 +3,7 @@
 import { createClient, type Client } from "@libsql/client";
 import { APP_DB_URL } from "./config";
 import { DEFAULT_AUTO_ACTIONS_PER_DAY } from "./permissions";
-import type { ApprovalRecord, ApprovalStatus, AuditEntry, AuditEvent, Bot, ChatMessage, ConversationId, Room } from "@/lib/shared/types";
+import type { ApprovalRecord, ApprovalStatus, AuditEntry, AuditEvent, Bot, ChatMessage, ConversationId, Room, Run, Task } from "@/lib/shared/types";
 
 // Cached across hot reloads, together with the file it points at, so a
 // changed database path opens a fresh connection instead of reusing one
@@ -11,7 +11,7 @@ import type { ApprovalRecord, ApprovalStatus, AuditEntry, AuditEvent, Bot, ChatM
 const g = globalThis as unknown as { __opencrewbotDb?: { url: string; schema?: number; client: Promise<Client> } };
 
 /** Bump when a table is added, so a hot-reloaded server re-runs the CREATE statements. */
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 async function open(): Promise<Client> {
   const db = createClient({ url: APP_DB_URL });
@@ -56,6 +56,10 @@ async function open(): Promise<Client> {
         detail TEXT
       )`,
       "CREATE INDEX IF NOT EXISTS audit_by_bot_and_time ON audit_log (bot_id, at)",
+      // The execution engine: one row per run and per task, the full record as JSON in `data`.
+      "CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, status TEXT NOT NULL, created_at TEXT NOT NULL, data TEXT NOT NULL)",
+      "CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, run_id TEXT NOT NULL, status TEXT NOT NULL, data TEXT NOT NULL)",
+      "CREATE INDEX IF NOT EXISTS tasks_by_run ON tasks (run_id)",
     ],
     "write",
   );
@@ -99,7 +103,7 @@ function normalizeBot(raw: Bot): Bot {
     skills: raw.skills ?? [],
     outputFormat: raw.outputFormat ?? "",
     // Bots saved before the Files tool existed have no `files` switch.
-    tools: { ...raw.tools, files: raw.tools.files ?? false },
+    tools: { ...raw.tools, files: raw.tools.files ?? false, planning: raw.tools.planning ?? false },
   };
 }
 
@@ -240,6 +244,51 @@ export async function listApprovalsByStatus(statuses: ApprovalStatus[], limit = 
     args: [...statuses, limit],
   });
   return rows.rows.map((r) => JSON.parse(String(r.data)) as ApprovalRecord);
+}
+
+// ── runs and tasks (execution engine) ───────────────────────────────────
+
+export async function saveRun(run: Run): Promise<void> {
+  await (await db()).execute({
+    sql: `INSERT INTO runs (id, status, created_at, data) VALUES (?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET status = excluded.status, data = excluded.data`,
+    args: [run.id, run.status, run.createdAt, JSON.stringify(run)],
+  });
+}
+
+export async function getRun(id: string): Promise<Run | null> {
+  const rows = await (await db()).execute({ sql: "SELECT data FROM runs WHERE id = ?", args: [id] });
+  return rows.rows[0] ? (JSON.parse(String(rows.rows[0].data)) as Run) : null;
+}
+
+/** Runs, newest first. */
+export async function listRuns(limit = 50): Promise<Run[]> {
+  const rows = await (await db()).execute({ sql: "SELECT data FROM runs ORDER BY created_at DESC LIMIT ?", args: [limit] });
+  return rows.rows.map((r) => JSON.parse(String(r.data)) as Run);
+}
+
+export async function listRunsByStatus(status: Run["status"]): Promise<Run[]> {
+  const rows = await (await db()).execute({ sql: "SELECT data FROM runs WHERE status = ? ORDER BY created_at", args: [status] });
+  return rows.rows.map((r) => JSON.parse(String(r.data)) as Run);
+}
+
+export async function saveTask(task: Task): Promise<void> {
+  await (await db()).execute({
+    sql: `INSERT INTO tasks (id, run_id, status, data) VALUES (?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET status = excluded.status, data = excluded.data`,
+    args: [task.id, task.runId, task.status, JSON.stringify(task)],
+  });
+}
+
+export async function getTask(id: string): Promise<Task | null> {
+  const rows = await (await db()).execute({ sql: "SELECT data FROM tasks WHERE id = ?", args: [id] });
+  return rows.rows[0] ? (JSON.parse(String(rows.rows[0].data)) as Task) : null;
+}
+
+/** A run's tasks, in the order they were created. */
+export async function listTasks(runId: string): Promise<Task[]> {
+  const rows = await (await db()).execute({ sql: "SELECT data FROM tasks WHERE run_id = ?", args: [runId] });
+  return rows.rows.map((r) => JSON.parse(String(r.data)) as Task).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
 // ── audit log (append-only) ─────────────────────────────────────────────

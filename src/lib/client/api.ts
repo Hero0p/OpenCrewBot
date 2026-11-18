@@ -11,9 +11,14 @@ import type {
   ConversationSummary,
   FileEntry,
   McpServer,
+  MemoryEntry,
+  MemoryFileInfo,
+  ProjectInfo,
   ModelOption,
   Room,
   RoomInput,
+  RunDetail,
+  RunSummary,
   Skill,
   SkillsState,
 } from "@/lib/shared/types";
@@ -78,6 +83,16 @@ export const api = {
     form.append("file", file);
     return call<{ path: string }>("/api/files", { method: "POST", body: form });
   },
+  memoryFiles: () => call<{ files: MemoryFileInfo[]; projects: ProjectInfo[] }>("/api/memory"),
+  memoryFile: (key: string) => call<{ key: string; path: string; content: string; entries: MemoryEntry[] }>(`/api/memory/file?key=${encodeURIComponent(key)}`),
+  saveMemoryFile: (key: string, content: string) => call<{ content: string }>("/api/memory/file", { method: "PUT", json: { key, content } }),
+  createProject: (name: string) => call<{ slug: string }>("/api/memory/projects", { method: "POST", json: { name, activate: true } }),
+  setActiveProject: (slug: string | null) => call("/api/memory/projects", { method: "PUT", json: { slug } }),
+  runs: () => call<{ runs: RunSummary[] }>("/api/runs"),
+  run: (id: string) => call<RunDetail>(`/api/runs/${id}`),
+  cancelRun: (id: string) => call(`/api/runs/${id}/cancel`, { method: "POST" }),
+  cancelTask: (id: string) => call(`/api/tasks/${id}/cancel`, { method: "POST" }),
+  retryTask: (id: string) => call(`/api/tasks/${id}/retry`, { method: "POST" }),
   approvals: () => call<ApprovalsState>("/api/approvals"),
   decideApproval: (id: string, approve: boolean) => call<{ approval: ApprovalRecord }>(`/api/approvals/${id}`, { method: "POST", json: { approve } }),
 };

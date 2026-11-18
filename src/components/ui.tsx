@@ -216,7 +216,7 @@ export function Segmented<T extends string>({
 }
 
 /** A modal sheet from the right, for creating things and app settings. */
-export function Drawer({ title, onClose, children, footer }: { title: ReactNode; onClose: () => void; children: ReactNode; footer?: ReactNode }) {
+export function Drawer({ title, onClose, children, footer, wide = false }: { title: ReactNode; onClose: () => void; children: ReactNode; footer?: ReactNode; wide?: boolean }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
@@ -225,7 +225,7 @@ export function Drawer({ title, onClose, children, footer }: { title: ReactNode;
   return (
     <div className="fixed inset-0 z-40 flex justify-end">
       <button aria-label="Close" className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" onClick={onClose} />
-      <aside role="dialog" aria-modal="true" className="relative flex h-full w-full max-w-[440px] flex-col border-l border-line bg-side shadow-pop">
+      <aside role="dialog" aria-modal="true" className={clsx("relative flex h-full w-full flex-col border-l border-line bg-side shadow-pop", wide ? "max-w-[760px]" : "max-w-[440px]")}>
         <header className="flex h-16 shrink-0 items-center justify-between gap-2 px-5">
           <h2 className="truncate text-[16px] font-semibold">{title}</h2>
           <IconButton label="Close" onClick={onClose} className="bg-raised">

@@ -30,6 +30,8 @@ export interface BotTools {
   askUser: boolean;
   /** Shared files: read spreadsheets (CSV), make charts and save reports in the workspace's Files folder. */
   files: boolean;
+  /** Plan and run team work: break a request into tasks for teammates (create_plan, update_plan, plan_status). For a Chief of Staff. */
+  planning: boolean;
 }
 
 /** A company whose models OpenCrewBot can call. The facts about each one live in `shared/providers.ts`. */
@@ -140,6 +142,56 @@ export interface ToolInfo {
   enabledBy: keyof BotTools | "skills" | "connections";
   /** Env var the tool needs, if any. */
   needsKey?: string;
+}
+
+/**
+ * The memory layers. Each is one editable Markdown file.
+ * - agent: one bot's own notes (data/workspaces/<botId>/MEMORY.md)
+ * - user: your preferences, shared by every bot
+ * - project: facts about one project (e.g. the business you're working on), shared by every bot while it's the active project
+ * - decisions: important decisions, shared by every bot
+ * - room: shared by the members of one room
+ * - history: what one run (team plan) did, written by the execution engine
+ */
+export type MemoryScope = "agent" | "user" | "project" | "decisions" | "room" | "history";
+
+/** Which memory file: the scope, plus an id for scopes that have many files. */
+export type MemoryKeyInput = { scope: "user" } | { scope: "decisions" } | { scope: "agent" | "project" | "room" | "history"; id: string };
+
+/** Why, when and by whom a memory line was written. Stored as an HTML comment at the end of the line. */
+export interface Provenance {
+  by: string;
+  when: string;
+  why: string;
+  /** Where it happened, e.g. "chat with Iris" or "room Market Intelligence". */
+  in: string;
+}
+
+/** One memory file, as listed in the Memory Manager. */
+export interface MemoryFileInfo {
+  /** "agent:<botId>", "user", "project:<slug>", "decisions", "room:<roomId>" or "history:<runId>". */
+  key: string;
+  scope: MemoryScope;
+  title: string;
+  /** Where the file is inside the data folder (OPENCREWBOT_DATA_DIR), e.g. "memory/user.md". Never an absolute path. */
+  path: string;
+  exists: boolean;
+  /** Bullet lines in the file. */
+  entries: number;
+  modifiedAt?: string;
+}
+
+/** One line of a memory file with its provenance, if it has one. */
+export interface MemoryEntry {
+  text: string;
+  provenance?: Provenance;
+}
+
+/** A project's memory file, and whether it's the active project. */
+export interface ProjectInfo {
+  slug: string;
+  name: string;
+  active: boolean;
 }
 
 /** A file in the shared Files folder (uploads, reports, charts). */
@@ -312,6 +364,91 @@ export interface AuditEntry {
   detail?: string;
 }
 
+// ── runs and tasks (the execution engine, engine.ts) ────────────────────
+
+/** A run is one team plan being carried out. It ends when every task has ended. */
+export type RunStatus = "running" | "completed" | "failed" | "cancelled";
+
+/** Something the engine did, in plain words, for the run's timeline. */
+export interface RunEvent {
+  at: string;
+  text: string;
+  /** The task it's about, if any. */
+  taskKey?: string;
+}
+
+export interface Run {
+  id: string;
+  title: string;
+  /** The person's request, as the planner understood it. */
+  goal: string;
+  /** Where it was started; progress notices and the final deliverable are posted there. */
+  conversationId: ConversationId;
+  /** The agent that planned it (the Chief of Staff); it also writes the final deliverable. */
+  plannerBotId: string;
+  /** The active project when the run started (its memory is shared with every task). */
+  project: string | null;
+  status: RunStatus;
+  createdAt: string;
+  completedAt?: string;
+  /** The final deliverable: the output of the run's final task. */
+  result?: string;
+  error?: string;
+  events: RunEvent[];
+}
+
+/**
+ * pending: waiting for its dependencies or a free slot · running · completed · failed: gave up after its retries
+ * · cancelled: you (or the planner) cancelled it. While running, a task may also be waiting for your approval;
+ * that shows as a pending approval for its conversation ("task:<id>").
+ */
+export type TaskStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
+
+export interface Task {
+  id: string;
+  runId: string;
+  /** Short id the planner gave it, used for dependencies, e.g. "research". */
+  key: string;
+  title: string;
+  /** What the agent must do. */
+  brief: string;
+  expectedOutput: string;
+  /** The skill this task needs, if the planner named one. */
+  skill?: string;
+  agentId: string;
+  /** Keys of tasks whose results this one needs. It starts once they have all ended. */
+  dependsOn: string[];
+  /** The run's last task: the planner consolidates everything into the final deliverable. */
+  isFinal: boolean;
+  status: TaskStatus;
+  /** How many times it has started (retries included). */
+  attempt: number;
+  maxAttempts: number;
+  createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  output?: string;
+  error?: string;
+  /** Agents that already failed this task, so a reassignment picks someone else. */
+  triedAgentIds: string[];
+  /** A retry waits until this time (backoff). */
+  notBefore?: string;
+}
+
+/** One row of the Task Dashboard's run list. */
+export interface RunSummary {
+  run: Run;
+  tasks: { total: number; completed: number; running: number; failed: number; cancelled: number };
+}
+
+/** A run with its tasks, as the Task Dashboard shows it. */
+export interface RunDetail {
+  run: Run;
+  tasks: Task[];
+  /** Task ids currently waiting for your approval. */
+  waitingForApproval: string[];
+}
+
 /** What the Approval Centre loads. */
 export interface ApprovalsState {
   /** Waiting for you, newest first. */
@@ -334,7 +471,11 @@ export type ServerEvent =
   | { type: "browser-session"; botId: string; liveUrl: string | null }
   | { type: "connections-changed" }
   /** An approval was requested or decided, or the audit log grew. */
-  | { type: "approvals-changed" };
+  | { type: "approvals-changed" }
+  /** A run or one of its tasks changed. */
+  | { type: "runs-changed"; runId: string }
+  /** A shared memory file changed (agent memory also sends memory-changed). */
+  | { type: "memory-files-changed"; key: string };
 
 /** An app from Composio's catalog, with this install's connection state. */
 export interface ComposioApp {

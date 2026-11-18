@@ -22,7 +22,7 @@ function blankBot(defaultModel: string): BotInput {
     emoji: "",
     color: BOT_COLORS[Math.floor(Math.random() * BOT_COLORS.length)],
     model: defaultModel,
-    tools: { webSearch: true, memory: true, codeMode: false, browser: false, askUser: true, files: true },
+    tools: { webSearch: true, memory: true, codeMode: false, browser: false, askUser: true, files: true, planning: false },
     approval: "ask",
     preapprovedActions: [],
     autoActionsPerDay: 20,
@@ -198,6 +198,12 @@ export function BotForm({ bot, onDone }: { bot?: Bot; onDone?: (bot: Bot) => voi
               hint="Reads spreadsheets (CSV), makes charts and saves reports in the shared Files folder."
               checked={form.tools.files ?? false}
               onChange={(v) => setTool("files", v)}
+            />
+            <Toggle
+              label="Plan team work"
+              hint="Chief of Staff: breaks requests into tasks for teammates, runs them in parallel and writes the final deliverable."
+              checked={form.tools.planning ?? false}
+              onChange={(v) => setTool("planning", v)}
             />
           </div>
         </div>

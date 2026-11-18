@@ -25,6 +25,14 @@ function mentionsIn(text: string, members: Bot[]): Bot[] {
   return members.filter((b) => handles.has(b.handle) || handles.has(b.name.toLowerCase()));
 }
 
+/**
+ * Did this reply start or change a team plan? Its @mentions then only describe the plan
+ * ("@leo drafts the posts"): the engine already hands those tasks out, so they aren't hand-offs.
+ */
+export function changedAPlan(reply: ChatMessage): boolean {
+  return reply.parts.some((p) => p.kind === "tool" && (p.name === "create_plan" || p.name === "update_plan") && p.status === "done");
+}
+
 function authorName(message: ChatMessage, bots: Map<string, Bot>): string {
   if (message.role === "user") return "Person";
   return bots.get(message.botId ?? "")?.name ?? "A former member";
@@ -68,6 +76,10 @@ async function decideResponders(room: Room, members: Bot[], text: string, histor
     return { bots: members, route: { by: "everyone" } as RouteNote };
   }
   const mentioned = mentionsIn(text, members);
+  // A message that @mentions a planner (Chief of Staff) goes to the planner alone: it assigns the
+  // teammates named in the message as plan tasks, so they don't also answer in the room and do the work twice.
+  const planners = mentioned.filter((b) => b.tools.planning);
+  if (planners.length) return { bots: planners, route: { by: "mention" } as RouteNote };
   if (mentioned.length) return { bots: mentioned, route: { by: "mention" } as RouteNote };
   if (room.responder === "auto") {
     const lines = history.slice(-9, -1).map((m) => `${authorName(m, bots)}: ${messageText(m).slice(0, 300)}`);
@@ -104,7 +116,7 @@ export async function runRoom(room: Room, userMessage: ChatMessage): Promise<voi
       content: roomPrompt(room, bot, members, catchUp(transcript, bot, bots), note.by === "handoff"),
       route: note,
     });
-    if (!reply || reply.status !== "done" || depth >= MAX_HANDOFF_DEPTH) continue;
+    if (!reply || reply.status !== "done" || depth >= MAX_HANDOFF_DEPTH || changedAPlan(reply)) continue;
     for (const next of mentionsIn(messageText(reply), members)) {
       if (next.id === bot.id || queue.some((q) => q.bot.id === next.id)) continue;
       queue.push({ bot: next, route: { by: "handoff" }, depth: depth + 1 });

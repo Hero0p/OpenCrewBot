@@ -40,6 +40,7 @@ function useConversationName() {
   return (id: ConversationId) => {
     const [kind, ref] = id.split(":");
     if (kind === "dm") return `Chat with ${state.bots.find((b) => b.id === ref)?.name ?? "a deleted bot"}`;
+    if (kind === "task") return "A task of a team plan (see Tasks and runs)";
     return state.rooms.find((r) => r.id === ref)?.name ?? "A deleted room";
   };
 }
@@ -84,6 +85,11 @@ function WaitingCard({ request }: { request: ApprovalRecord }) {
         type="button"
         className="mt-1 text-[12.5px] text-mute hover:text-ink hover:underline"
         onClick={() => {
+          // A task's conversation isn't a chat; its run is shown in Tasks and runs.
+          if (request.conversationId.startsWith("task:")) {
+            setPanel({ kind: "runs" });
+            return;
+          }
           open(request.conversationId);
           setPanel(null);
         }}
