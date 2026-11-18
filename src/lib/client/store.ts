@@ -21,6 +21,8 @@ export interface AppState {
   liveViews: Record<string, string>;
   /** Bumped when apps or MCP servers change, so views refetch them. */
   connectionsVersion: number;
+  /** Bumped when an approval is requested or decided, so the Approval Centre and its badge refetch. */
+  approvalsVersion: number;
 }
 
 export const initialState: AppState = {
@@ -36,6 +38,7 @@ export const initialState: AppState = {
   counted: {},
   liveViews: {},
   connectionsVersion: 0,
+  approvalsVersion: 0,
 };
 
 export type Action =
@@ -166,6 +169,8 @@ function applyEvent(state: AppState, event: ServerEvent): AppState {
     }
     case "connections-changed":
       return { ...state, connectionsVersion: state.connectionsVersion + 1 };
+    case "approvals-changed":
+      return { ...state, approvalsVersion: state.approvalsVersion + 1 };
     case "bots-changed":
     case "rooms-changed":
       // The provider refetches the bootstrap payload for these.

@@ -36,6 +36,8 @@ These rules apply to everything added on top of the original OpenCrewBot. Severa
 - Data with a source (prices, model lists) says where it came from and when it was checked.
 
 **Checks before a change is done**
-- `pnpm exec tsc --noEmit` and `pnpm lint` pass.
+- `pnpm exec tsc --noEmit`, `pnpm lint` and `pnpm test` pass.
+- New behaviour gets a test in `tests/` that describes the behaviour (not the implementation). Tests never read `.env`; they set the env vars they need.
+- Every new tool is classified in `toolCategory()` (tools.ts). An unclassified tool falls into "other", which always asks.
 - The changed behaviour was exercised for real (or with the mock model) and the result recorded.
 - Docs that describe the changed behaviour (README, `.env.example`, `docs/FEATURE_AUDIT.md`) are updated in the same change.

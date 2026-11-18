@@ -82,7 +82,15 @@ _The Memory tab is the file itself. The panel refreshes live when the bot writes
 
 ### Ask before acting
 
-On **Ask first**, a bot stops before each browser action and shows an approval card in chat. **Allow once** runs it; **Deny** skips it and the bot carries on. Bots can also pause to ask you a question, with suggested answers as buttons, and resume when you reply. **Full access** acts without asking.
+Each bot has one of three **permission levels**. Lookups (search, reading pages) and the bot's own memory never ask.
+
+| Level | Actions in apps, MCP servers and the browser |
+| --- | --- |
+| **Ask first** | Every action waits for your OK. |
+| **Controlled** | The kinds of action you pre-approve (app actions, browser actions) run on their own, up to a daily limit (any 24 hours); everything else asks. |
+| **Full access** | Acts without asking. |
+
+A tool that hasn't been classified always asks, at every level. When a bot needs approval, the request appears as a card in the chat **and** in the **Approval Centre** (shield icon in the sidebar), with the exact details it would run with. **Approve** runs it once; **Reject** means it never runs, and the bot is told so and adapts. Requests that can no longer be decided (server restart, Stop) expire, and their actions never run. The Approval Centre also keeps the decision **history** and an append-only **audit log** of every tool call, approval and decision. Bots can also pause to ask you a question, with suggested answers as buttons, and resume when you reply.
 
 <div align="center">
 
@@ -219,11 +227,15 @@ It assumes one local owner and has no sign-in. To keep it that way, `pnpm dev` a
 - `src/lib/server/model-chain.ts`: the ordered list of models a bot tries (its model, then fallbacks), and the reporter that records which model answered.
 - `src/lib/server/models.ts`: the model picker's catalog and prices.
 - `src/lib/server/mock-model.ts`: the scripted model used without any provider key.
+- `src/lib/server/permissions.ts`: the three permission levels, turned into one policy per tool category for Mastra to enforce.
+- `src/lib/server/approvals.ts`: the approval and audit trail (requests, decisions, tool runs, the daily limit count).
+- `src/components/ApprovalCentre.tsx`: waiting requests, decision history and the audit log.
+- `tests/`: automated tests (`pnpm test`), including a real Mastra session proving rejected actions never run.
 - `src/components/`: the chat interface. `src/lib/client/store.ts` folds server events into state.
 
 ## Contributing
 
-Issues and pull requests are welcome. Describe the workflow a change enables, run `pnpm exec tsc --noEmit` and `pnpm lint`, and say whether you tested it against live services or the mock model.
+Issues and pull requests are welcome. Describe the workflow a change enables, run `pnpm exec tsc --noEmit`, `pnpm lint` and `pnpm test`, and say whether you tested it against live services or the mock model.
 
 ## License
 

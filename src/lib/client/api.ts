@@ -1,5 +1,7 @@
 import type {
   AppStatus,
+  ApprovalRecord,
+  ApprovalsState,
   Bot,
   BotInput,
   ChatMessage,
@@ -65,4 +67,6 @@ export const api = {
     call<{ server: McpServer }>("/api/connections/mcp", { method: "POST", json: input }),
   removeMcpServer: (id: string) => call(`/api/connections/mcp/${id}`, { method: "DELETE" }),
   testMcpServer: (id: string) => call<{ tools: number }>(`/api/connections/mcp/${id}/test`, { method: "POST" }),
+  approvals: () => call<ApprovalsState>("/api/approvals"),
+  decideApproval: (id: string, approve: boolean) => call<{ approval: ApprovalRecord }>(`/api/approvals/${id}`, { method: "POST", json: { approve } }),
 };

@@ -1,6 +1,21 @@
 // Types shared by the server and the browser. Everything here is plain JSON.
 
-export type ApprovalMode = "ask" | "full";
+/**
+ * How freely a bot may act. Lookups (search, reading pages) and the bot's own memory never ask.
+ * - "ask": every action in another system (an app, an MCP server, a website) waits for your OK.
+ * - "controlled": the kinds of action in `preapprovedActions` run on their own, up to
+ *   `autoActionsPerDay` in any 24 hours; everything else asks.
+ * - "full": every action runs without asking.
+ * A tool nobody has classified always asks, at every level.
+ */
+export type ApprovalMode = "ask" | "controlled" | "full";
+
+/**
+ * Kinds of action that change something outside OpenCrewBot.
+ * - "apps": connected apps (Composio) and MCP servers: sending messages, creating issues or pages…
+ * - "browser": acting in the cloud browser: opening pages, clicking, typing.
+ */
+export type ActionGroup = "apps" | "browser";
 
 export interface BotTools {
   /** Tavily search, extract and crawl. */
@@ -56,11 +71,20 @@ export interface Bot {
   /** Connection ids this bot may use: `composio:<toolkit>` or `mcp:<serverId>`. */
   connections: string[];
   approval: ApprovalMode;
+  /** Controlled access only: kinds of action that may run without asking. */
+  preapprovedActions: ActionGroup[];
+  /** Controlled access only: how many actions may run without asking in any 24 hours before it asks again. */
+  autoActionsPerDay: number;
   pinned: boolean;
   createdAt: string;
 }
 
-export type BotInput = Omit<Bot, "id" | "createdAt" | "handle" | "connections"> & { handle?: string; connections?: string[] };
+export type BotInput = Omit<Bot, "id" | "createdAt" | "handle" | "connections" | "preapprovedActions" | "autoActionsPerDay"> & {
+  handle?: string;
+  connections?: string[];
+  preapprovedActions?: ActionGroup[];
+  autoActionsPerDay?: number;
+};
 
 export type RoomResponder = "auto" | "lead" | "everyone";
 
@@ -173,6 +197,67 @@ export interface AppStatus {
   dataDir: string;
 }
 
+/** Where an approval request stands. "expired" means it can no longer be decided (restart, Stop); the action did not run. */
+export type ApprovalStatus = "pending" | "approved" | "rejected" | "expired";
+
+/** One request from a bot to run an action, as shown in the Approval Centre. */
+export interface ApprovalRecord {
+  id: string;
+  /** Mastra's id for the parked tool call this request belongs to. */
+  toolCallId: string;
+  botId: string;
+  conversationId: ConversationId;
+  toolName: string;
+  /** Readable summary, e.g. "Slack: send message". */
+  label: string;
+  /** The exact arguments the action would run with, as JSON, with secrets redacted. */
+  argsPreview: string;
+  status: ApprovalStatus;
+  requestedAt: string;
+  decidedAt?: string;
+  /** Why it left "pending": "you", or the reason it expired. */
+  decidedBy?: string;
+}
+
+/** What an audit log row records. Rows are only ever added, never changed or deleted. */
+export type AuditEvent =
+  | "approval.requested"
+  | "approval.approved"
+  | "approval.rejected"
+  | "approval.expired"
+  /** The tool ran without asking, because its policy allowed it. */
+  | "tool.ran_auto"
+  /** The tool ran after you approved it. */
+  | "tool.ran_approved"
+  /** The tool was stopped before it ran (rejected, or the run was stopped). */
+  | "tool.not_run"
+  /** A controlled-access bot used up its daily allowance; its actions ask again. */
+  | "limit.reached";
+
+export interface AuditEntry {
+  id: number;
+  at: string;
+  event: AuditEvent;
+  botId: string;
+  conversationId: ConversationId;
+  toolName?: string;
+  toolCallId?: string;
+  /** Mastra's approval category for the tool: read, edit, execute, mcp or other. */
+  toolCategory?: string;
+  /** Extra facts in plain words, e.g. "succeeded" or "failed: timeout". */
+  detail?: string;
+}
+
+/** What the Approval Centre loads. */
+export interface ApprovalsState {
+  /** Waiting for you, newest first. */
+  pending: ApprovalRecord[];
+  /** Decided or expired, newest first. */
+  history: ApprovalRecord[];
+  /** Newest first. */
+  audit: AuditEntry[];
+}
+
 /** Events the server pushes to the browser over one SSE stream. */
 export type ServerEvent =
   | { type: "message"; message: ChatMessage }
@@ -183,7 +268,9 @@ export type ServerEvent =
   | { type: "memory-changed"; botId: string }
   /** A bot's Browserbase live view opened (url) or closed (null). */
   | { type: "browser-session"; botId: string; liveUrl: string | null }
-  | { type: "connections-changed" };
+  | { type: "connections-changed" }
+  /** An approval was requested or decided, or the audit log grew. */
+  | { type: "approvals-changed" };
 
 /** An app from Composio's catalog, with this install's connection state. */
 export interface ComposioApp {

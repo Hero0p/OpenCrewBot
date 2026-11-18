@@ -4,7 +4,7 @@ import clsx from "clsx";
 import { Check } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/client/api";
-import type { Bot, BotInput } from "@/lib/shared/types";
+import type { ActionGroup, Bot, BotInput } from "@/lib/shared/types";
 import { useApp } from "./OpenCrewBotApp";
 import { FallbackChain, ModelPicker } from "./ModelPicker";
 import { mockModeText } from "./SettingsPanel";
@@ -23,9 +23,17 @@ function blankBot(defaultModel: string): BotInput {
     model: defaultModel,
     tools: { webSearch: true, memory: true, codeMode: false, browser: false, askUser: true },
     approval: "ask",
+    preapprovedActions: [],
+    autoActionsPerDay: 20,
     pinned: false,
   };
 }
+
+/** The kinds of action a controlled-access bot can be allowed to run without asking. */
+const ACTION_GROUP_OPTIONS: { value: ActionGroup; label: string; hint: string }[] = [
+  { value: "apps", label: "Connected apps and MCP servers", hint: "Sending messages, creating issues or pages, and similar." },
+  { value: "browser", label: "Browser actions", hint: "Opening pages, clicking and typing in the cloud browser." },
+];
 
 export function ColorPicker({ value, onChange }: { value: string; onChange: (c: string) => void }) {
   return (
@@ -62,6 +70,7 @@ export function BotForm({ bot, onDone }: { bot?: Bot; onDone?: (bot: Bot) => voi
   const dirty = JSON.stringify(form) !== JSON.stringify(initial);
 
   const set = <K extends keyof BotInput>(k: K, v: BotInput[K]) => setForm((f) => ({ ...f, [k]: v }));
+  const preapproved = form.preapprovedActions ?? [];
   const setTool = (k: keyof BotInput["tools"], v: boolean) => setForm((f) => ({ ...f, tools: { ...f.tools, [k]: v } }));
 
   const save = async () => {
@@ -182,16 +191,48 @@ export function BotForm({ bot, onDone }: { bot?: Bot; onDone?: (bot: Bot) => voi
           </div>
         </div>
 
-        <Field label="Approval">
+        <Field label="Permission level" hint="Searching, reading pages and its own memory never ask. Rejected actions never run.">
           <Segmented
             value={form.approval}
             onChange={(v) => set("approval", v)}
             options={[
-              { value: "ask", label: "Ask first", hint: "Browser actions wait for your OK." },
+              { value: "ask", label: "Ask first", hint: "Every action in apps or the browser waits for your OK." },
+              { value: "controlled", label: "Controlled", hint: "Chosen kinds of action run on their own, up to a daily limit." },
               { value: "full", label: "Full access", hint: "Acts without asking." },
             ]}
           />
         </Field>
+
+        {form.approval === "controlled" && (
+          <div>
+            <span className="mb-1.5 block text-[12.5px] font-medium text-mute">Runs without asking</span>
+            <div className="divide-y divide-line rounded-2xl bg-raised px-4">
+              {ACTION_GROUP_OPTIONS.map((g) => (
+                <Toggle
+                  key={g.value}
+                  label={g.label}
+                  hint={g.hint}
+                  checked={preapproved.includes(g.value)}
+                  onChange={(on) => set("preapprovedActions", on ? [...preapproved, g.value] : preapproved.filter((x) => x !== g.value))}
+                />
+              ))}
+              <label className="flex items-center justify-between gap-3 py-2.5 text-[14px]">
+                <span>
+                  Daily limit
+                  <span className="mt-0.5 block text-[12.5px] text-mute">After this many actions in 24 hours, it asks again.</span>
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  max={1000}
+                  className={clsx(inputClass, "w-24 text-right")}
+                  value={form.autoActionsPerDay ?? 20}
+                  onChange={(e) => set("autoActionsPerDay", Math.max(0, Math.min(1000, Math.round(Number(e.target.value) || 0))))}
+                />
+              </label>
+            </div>
+          </div>
+        )}
 
         {bot && (
           <div className="pt-2">

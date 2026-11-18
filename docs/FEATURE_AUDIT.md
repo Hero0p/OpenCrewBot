@@ -35,7 +35,7 @@ of every development step.
 | **Storage** | libSQL/SQLite: `data/opencrewbot.db` (bots, rooms, messages, settings) and `data/mastra.db` (Mastra's thread history). Memory: `data/workspaces/<botId>/MEMORY.md` |
 | **Live updates** | One Server-Sent Events stream (`/api/events`) fed by an in-process event bus (`bus.ts`) |
 | **External services** | Tavily (web search), Browserbase (cloud browser), Composio (connected apps), remote MCP servers, Jev by TypeSafe (room routing) |
-| **Tests** | None. There is no test script or test files; the README describes manual checks done with the mock model. |
+| **Tests** | None. There is no test script or test files; the README describes manual checks done with the mock model. *(OpenCrewBot 2.0 adds a Vitest suite in Step 3.)* |
 
 ### How one message flows through the original code
 
@@ -142,15 +142,17 @@ Approve/Deny card clicked
 ### Module G: Human approval and autonomy
 | Requirement | Original status | Evidence | What we add |
 |---|---|---|---|
-| Three permission levels | 🟡 Partial | Two levels: **Ask first** and **Full access** | Add **Controlled Access** |
-| Approval before sensitive actions | ✅ Implemented | Mastra pauses the tool call until **Allow once / Deny**; Deny means the tool never runs | Keep |
-| Action preview | 🟡 Partial | The card shows the action name (e.g. "Slack: send message"), not the full payload (message text, recipient) | Planned |
-| Approval centre | ❌ Missing | Approval cards exist only inline in each chat | Planned |
-| Tool-level permissions | 🟡 Partial | Per *category* (read / edit / execute / mcp / other), not per tool | Planned |
-| Audit log | ❌ Missing | — | Planned |
-| Cancellation | ✅ Implemented | Stop button | Keep |
-| Secure credentials | ✅ Implemented | Keys in `.env` (git-ignored), never sent to the browser; Composio holds app OAuth tokens. ⚠️ MCP server tokens are stored unencrypted in the `settings` table | Note in limitations |
-| Pending approval survives restart | 🟡 Partial | No; approvals live in the Mastra session in memory. After a restart the card is marked denied (fails safe) | Planned |
+| Three permission levels | 🟡 Partial | Two levels: **Ask first** and **Full access** | ✅ **Step 4:** **Ask first / Controlled / Full access**. Controlled pre-approves kinds of action (app actions, browser actions) up to a limit per 24 hours (`permissions.ts`) |
+| Approval before sensitive actions | ✅ Implemented | Mastra pauses the tool call until **Allow once / Deny**; Deny means the tool never runs | Kept. **Proven by test** with a real Mastra session (`tests/approval-enforcement.test.ts`). The model is now told a rejection happened, so it adapts instead of retrying |
+| Action preview | 🟡 Partial | The card shows the action name (e.g. "Slack: send message"), not the full payload (message text, recipient) | ✅ **Step 4:** the Approval Centre shows the exact arguments as JSON, with secrets redacted |
+| Approval centre | ❌ Missing | Approval cards exist only inline in each chat | ✅ **Step 4:** Waiting / History / Audit log tabs; sidebar badge with the waiting count. Chat cards and the Approval Centre go through the same recorded decision |
+| Tool-level permissions | 🟡 Partial | Per *category* (read / edit / execute / mcp / other), not per tool | 🟡 **Step 4:** per kind of action (app actions vs browser actions) per bot, with a daily limit. Per individual app action (e.g. only "create issue") comes with Step 12, when app actions become separate tools |
+| Audit log | ❌ Missing | — | ✅ **Step 4:** append-only `audit_log` table: every request, decision, expiry, tool run (with or without asking, or not run) and limit hit |
+| Cancellation | ✅ Implemented | Stop button | Kept. Stopping while a request waits now expires the request (logged) |
+| Secure credentials | ✅ Implemented | Keys in `.env` (git-ignored), never sent to the browser; Composio holds app OAuth tokens. ⚠️ MCP server tokens are stored unencrypted in the `settings` table | Kept; argument previews and audit text pass through secret redaction |
+| Pending approval survives restart | 🟡 Partial | No; approvals live in the Mastra session in memory. After a restart the card is marked denied (fails safe) | 🟡 **Step 4:** still not resumable, but now recorded: on startup every pending request is marked **expired (server restart)** in the database and audit log; its action never ran |
+| Unclassified tools | ⚠️ Risk | `toolCategory()` returns `"other"` for unknown tools, and `runtime.ts` **allowed** `"other"` | ✅ **Step 3:** `"other"` now **asks at every permission level**, including full access |
+| An approval that doesn't reach the bot | ⚠️ Risk | `respondToApproval` ignored Mastra's `{ accepted: false }` result, so an "Allow" could silently go nowhere | ✅ **Step 4:** checked; the request is marked expired and the error is shown |
 
 ### Module H: Integrations
 | Requirement | Original status | Evidence | What we add |
@@ -189,7 +191,7 @@ Approve/Deny card clicked
 | Memory manager | 🟡 | One bot's Memory tab at a time |
 | Skills and tools manager | 🟡 | 5 tool switches per bot; no skills |
 | Task execution dashboard | ❌ | — |
-| Approval centre | 🟡 | Inline chat cards only |
+| Approval centre | 🟡 → ✅ (Step 4) | Approval Centre panel (shield icon): waiting requests with full previews, history, audit log |
 | Integration manager | ✅ | Connections panel (Composio apps + MCP servers) |
 | Model configuration | 🟡 → ✅ (Step 2) | Per-bot model picker across 4 providers, fallback chain shown under it, provider keys listed in Settings |
 | Scheduled workflows | ❌ | — |
@@ -207,9 +209,9 @@ Approve/Deny card clicked
 | Shared project memory | Working | ❌ |
 | Reusable skills | 8 | 0 |
 | Working integrations | 3 | Unverified |
-| Permission levels | 3 | 2 |
+| Permission levels | 3 | 2 → **3 (Step 4)** |
 | Scheduled workflows | Working | ❌ |
-| Approval centre | Working | 🟡 inline only |
+| Approval centre | Working | 🟡 inline only → **✅ (Step 4)** |
 | Execution history | Working | 🟡 transcripts only |
 | Failure recovery | Demonstrated | 🟡 restart marks turns as interrupted; no retry |
 | Business demonstrations | 7 | 0 |
@@ -221,12 +223,12 @@ Approve/Deny card clicked
 1. **Single model provider.** Nebius is wired in at three places (see Module J). *Fixed in Step 2.*
 2. **No unit of work bigger than one chat turn.** Everything is a message. There are no tasks, runs or plans to track, retry or resume.
 3. **Rooms are sequential.** `runRoom()` awaits each bot before starting the next, so no two bots ever work at the same time.
-4. **Approval state lives in memory.** It's lost on restart; this fails safe, but can't be resumed or reviewed later.
-5. **New tools are auto-allowed by default.** `toolCategory()` returns `"other"` for any tool it doesn't recognise, and the session allows `"other"` without asking. Every tool we add must be classified, or the default must change to "ask".
+4. **Approval state lives in memory.** It's lost on restart; this fails safe, but can't be resumed or reviewed later. *Step 4: requests and decisions are now in the database and reviewable; a request pending at restart is marked expired.*
+5. **New tools are auto-allowed by default.** `toolCategory()` returns `"other"` for any tool it doesn't recognise, and the session allows `"other"` without asking. Every tool we add must be classified, or the default must change to "ask". *Fixed in Step 3: "other" always asks.*
 6. **MCP read-only detection is a name heuristic.** A tool is treated as a safe lookup if its name starts with `get_`, `list_`, `search_` and so on. A badly named destructive tool would run without approval.
 7. **Mock mode is all-or-nothing.** It's decided by a single key check, not per provider or per integration.
 8. **Memory is per bot only.** There is no shared, room or project memory, and provenance is just a date.
-9. **No tests.** Every change has to be verified by hand until we add a test suite.
+9. **No tests.** Every change has to be verified by hand until we add a test suite. *Step 3: Vitest suite added (`pnpm test`), 36 tests.*
 10. **No sign-in.** The app trusts anyone who can reach it. It's safe locally because it listens on `127.0.0.1` only and `proxy.ts` blocks other hosts. **It must not be deployed publicly (e.g. Render) without adding authentication.**
 11. **The local disk is the database.** On hosts with temporary disks (Render's free tier) every restart would wipe bots, chats and memory.
 12. **Gemini rejected the web search tool.** *Found and fixed in Step 2.* Tavily's search tool declares `includeRawContent` as `false | "markdown" | "text"`; Gemini refuses a boolean inside an enum, so every request from a bot with web search failed on Gemini. `tools.ts` now narrows that option to `"markdown" | "text"` (leaving it out already means "no content").

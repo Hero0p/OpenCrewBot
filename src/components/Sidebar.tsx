@@ -1,12 +1,13 @@
 "use client";
 
 import clsx from "clsx";
-import { MoreHorizontal, PanelLeft, Pin, Plug, Plus, Search, Settings, X } from "lucide-react";
+import { MoreHorizontal, PanelLeft, Pin, Plug, Plus, Search, Settings, ShieldCheck, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/client/api";
 import { timeLabel } from "@/lib/client/format";
 import type { Bot, ConversationSummary, Room } from "@/lib/shared/types";
 import { useApp } from "./OpenCrewBotApp";
+import { usePendingApprovalCount } from "./ApprovalCentre";
 import { BotAvatar, IconButton, Mascot, RoomAvatar } from "./ui";
 
 type Row =
@@ -178,6 +179,7 @@ function SidebarFooter() {
   const missing = status ? Object.values(status.keys).filter((on) => !on).length : 0;
   const settingsHint = status?.mock ? "Settings · mock mode" : missing ? `Settings · ${missing} key${missing === 1 ? "" : "s"} not set` : "Settings";
   const liveProviders = status?.providers.filter((p) => p.configured).map((p) => p.label) ?? [];
+  const waitingApprovals = usePendingApprovalCount();
   return (
     <div className="flex items-center gap-1 border-t border-line px-3 py-3">
       <button
@@ -191,7 +193,19 @@ function SidebarFooter() {
           {status?.mock ? "Mock mode" : liveProviders.join(" · ")}
         </span>
       </button>
-      <IconButton label="Connections" onClick={() => setPanel({ kind: "connections" })} className="ml-auto">
+      <IconButton
+        label={waitingApprovals ? `Approval Centre · ${waitingApprovals} waiting` : "Approval Centre"}
+        onClick={() => setPanel({ kind: "approvals" })}
+        className="relative ml-auto"
+      >
+        <ShieldCheck size={18} />
+        {waitingApprovals > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-warn px-1 text-[10px] font-semibold text-black">
+            {waitingApprovals}
+          </span>
+        )}
+      </IconButton>
+      <IconButton label="Connections" onClick={() => setPanel({ kind: "connections" })}>
         <Plug size={18} />
       </IconButton>
       <IconButton label={settingsHint} onClick={() => setPanel({ kind: "settings" })} className="relative">

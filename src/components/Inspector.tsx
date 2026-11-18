@@ -143,6 +143,22 @@ function BotConnections({ bot }: { bot: Bot }) {
   );
 }
 
+/** The bot's permission level in one sentence. */
+function permissionSummary(bot: Bot): string {
+  switch (bot.approval) {
+    case "ask":
+      return "Ask first: every action in apps or the browser waits for your OK.";
+    case "controlled": {
+      const kinds = [bot.preapprovedActions.includes("apps") && "app actions", bot.preapprovedActions.includes("browser") && "browser actions"].filter(Boolean);
+      return kinds.length
+        ? `Controlled: ${kinds.join(" and ")} run on their own, up to ${bot.autoActionsPerDay} a day; anything else asks.`
+        : "Controlled: nothing is pre-approved yet, so every action asks.";
+    }
+    case "full":
+      return "Full access: acts without asking.";
+  }
+}
+
 /** A calm summary of the bot; the full form only appears when you choose Edit. */
 function BotDetails({ bot }: { bot: Bot }) {
   const { state, toast } = useApp();
@@ -197,9 +213,7 @@ function BotDetails({ bot }: { bot: Bot }) {
         ) : (
           <p className="text-[13.5px] text-mute">No tools. It only chats.</p>
         )}
-        {bot.tools.browser && (
-          <p className="mt-2.5 text-[12.5px] text-mute">{bot.approval === "full" ? "Full access: browses without asking." : "Asks before each browser action."}</p>
-        )}
+        <p className="mt-2.5 text-[12.5px] text-mute">{permissionSummary(bot)}</p>
       </Card>
       <BotConnections bot={bot} />
       <Button className="mt-2 w-full" onClick={() => setEditing(true)}>

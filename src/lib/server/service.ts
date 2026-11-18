@@ -2,7 +2,7 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import type { Bot, BotInput, ChatMessage, ConversationId, ConversationSummary, Room, RoomInput } from "@/lib/shared/types";
+import type { ActionGroup, ApprovalMode, ApprovalRecord, Bot, BotInput, ChatMessage, ConversationId, ConversationSummary, Room, RoomInput } from "@/lib/shared/types";
 import { DATA_DIR } from "./config";
 import { InputError } from "./errors";
 import * as store from "./db";
@@ -10,7 +10,9 @@ import { publish } from "./bus";
 import { defaultModel } from "./providers";
 import { splitModelId } from "@/lib/shared/providers";
 import { deleteWorkspace, writeMemory } from "./memory-files";
-import { forgetConversation, resetBot, runTurn, runningBots, stopConversation } from "./runtime";
+import { forgetConversation, resetBot, respondToApproval, runTurn, runningBots, stopConversation } from "./runtime";
+import { expireAllPending, expireApproval, recordDecision } from "./approvals";
+import { DEFAULT_AUTO_ACTIONS_PER_DAY } from "./permissions";
 import { messagePreview } from "@/lib/shared/preview";
 import { roomConversationId, runRoom } from "./rooms";
 
@@ -46,8 +48,12 @@ async function migrateModelIdsToProviderPrefix() {
   await store.setSetting(MODEL_ID_MIGRATION, true);
 }
 
-/** A turn that was streaming when the server stopped can't resume. Say so. */
+/**
+ * A turn that was streaming when the server stopped can't resume. Say so.
+ * Its parked tool calls are gone too, so their approval requests expire: those actions never ran.
+ */
 async function sweepInterrupted() {
+  await expireAllPending("server restart");
   const client = await store.db();
   const rows = await client.execute(`SELECT data FROM messages WHERE data LIKE '%"status":"streaming"%'`);
   for (const r of rows.rows) {
@@ -137,12 +143,29 @@ function validateModelId(id: string, field: string) {
   }
 }
 
+const APPROVAL_MODES: readonly ApprovalMode[] = ["ask", "controlled", "full"];
+const ACTION_GROUPS: readonly ActionGroup[] = ["apps", "browser"];
+
+function validatePermissions(input: Partial<BotInput>) {
+  if (input.approval !== undefined && !APPROVAL_MODES.includes(input.approval)) {
+    throw new InputError(`Approval must be one of: ${APPROVAL_MODES.join(", ")}.`);
+  }
+  for (const group of input.preapprovedActions ?? []) {
+    if (!ACTION_GROUPS.includes(group)) throw new InputError(`Unknown kind of action "${group}". Use: ${ACTION_GROUPS.join(", ")}.`);
+  }
+  const limit = input.autoActionsPerDay;
+  if (limit !== undefined && (!Number.isInteger(limit) || limit < 0 || limit > 1000)) {
+    throw new InputError("The daily limit must be a whole number from 0 to 1,000.");
+  }
+}
+
 function validateBot(input: Partial<BotInput>) {
   if (input.name !== undefined && !input.name.trim()) throw new InputError("A bot needs a name.");
   if (input.name && input.name.length > 40) throw new InputError("Keep the name under 40 characters.");
   if (input.instructions && input.instructions.length > 8000) throw new InputError("Instructions are limited to 8,000 characters.");
   if (input.model !== undefined) validateModelId(input.model, "Model");
   for (const id of input.fallbackModels ?? []) validateModelId(id, "Fallback model");
+  validatePermissions(input);
 }
 
 export async function createBot(input: BotInput): Promise<Bot> {
@@ -152,6 +175,8 @@ export async function createBot(input: BotInput): Promise<Bot> {
     id: randomUUID().slice(0, 8),
     name: input.name.trim(),
     connections: input.connections ?? [],
+    preapprovedActions: input.preapprovedActions ?? [],
+    autoActionsPerDay: input.autoActionsPerDay ?? DEFAULT_AUTO_ACTIONS_PER_DAY,
     handle: await uniqueHandle(input.handle || input.name),
     createdAt: new Date().toISOString(),
   };
@@ -274,6 +299,48 @@ export async function sendMessage(conversationId: ConversationId, text: string):
   if (bot) void runTurn({ bot, conversationId, content }).catch(() => {});
   if (room) void runRoom(room, message).catch(() => {});
   return message;
+}
+
+// ── approvals ───────────────────────────────────────────────────────────
+
+/**
+ * Approve or reject one waiting action, from the Approval Centre.
+ * @param approvalId - the request's id
+ * @returns the decided request
+ * @throws InputError when it doesn't exist, was already decided, or its bot is no longer waiting
+ */
+export async function decideApproval(approvalId: string, approve: boolean): Promise<ApprovalRecord> {
+  const record = await store.getApproval(approvalId);
+  if (!record) throw new InputError("That approval request doesn't exist.");
+  return decide(record, approve);
+}
+
+/**
+ * Approve or reject one waiting action, from its card in the chat.
+ * @throws InputError when no pending request exists for that tool call
+ */
+export async function decideToolCall(conversationId: ConversationId, botId: string, toolCallId: string, approve: boolean): Promise<ApprovalRecord> {
+  const record = await store.findPendingApproval(conversationId, botId, toolCallId);
+  if (!record) throw new InputError("That request is no longer waiting.");
+  return decide(record, approve);
+}
+
+/**
+ * The decision is written first, then the waiting bot is released, so the audit log shows
+ * the decision before the tool's run. If the bot can't be reached, the request is marked
+ * expired: Mastra never ran the action, and the log says why.
+ */
+async function decide(record: ApprovalRecord, approve: boolean): Promise<ApprovalRecord> {
+  if (record.status !== "pending") throw new InputError(`That request was already ${record.status}.`);
+  const decided = await recordDecision(record, approve ? "approved" : "rejected");
+  try {
+    await respondToApproval(record.conversationId, record.botId, record.toolCallId, approve);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "the waiting bot couldn't be reached";
+    await expireApproval(decided, reason);
+    throw new InputError(reason);
+  }
+  return decided;
 }
 
 export async function clearConversation(conversationId: ConversationId): Promise<void> {

@@ -16,6 +16,8 @@ import { costUsd, findModel } from "./models";
 import { answeringModelReporter, resolveModelChain, toMastraModels } from "./model-chain";
 import { createMockModel } from "./mock-model";
 import { announceLiveView, createSession, releaseSession } from "./browserbase";
+import { ACTION_CATEGORIES, applyPermissionRules, permissionRules } from "./permissions";
+import { autoActionsInLast24h, expirePendingFor, recordApprovalRequest, recordLimitReached, recordToolRun } from "./approvals";
 import { buildConnectorTools, connectionsVersion } from "./connectors";
 import { systemPrompt } from "./prompt";
 import { buildTools, toolCategory, toolLabel, toolPreview, toolSources } from "./tools";
@@ -170,14 +172,34 @@ async function sessionFor(bot: Bot, conversationId: ConversationId): Promise<Ses
   const cached = state.sessions.get(k);
   if (cached && cached.thread.getId() === threadId) return cached;
   const session = await runtime.controller.createSession({ resourceId: OWNER_ID, scope: conversationId, threadId });
-  await session.permissions.setForCategory({ category: "read", policy: "allow" });
-  await session.permissions.setForCategory({ category: "edit", policy: "allow" });
-  await session.permissions.setForCategory({ category: "other", policy: "allow" });
-  // Connected apps and MCP servers act on real accounts: ask first unless the bot has full access.
-  await session.permissions.setForCategory({ category: "mcp", policy: bot.approval === "full" ? "allow" : "ask" });
-  await session.permissions.setForCategory({ category: "execute", policy: bot.approval === "full" ? "allow" : "ask" });
+  // Permission rules are applied before every turn (see executeTurn), not only here, so a new
+  // 24-hour window or a limit reached elsewhere is always taken into account.
   state.sessions.set(k, session);
   return session;
+}
+
+/** Decide this bot's permission rules from its settings and recent usage, and write them into the session. */
+async function applyPermissions(session: Session, bot: Bot): Promise<void> {
+  await applyPermissionRules(session.permissions, permissionRules(bot, await autoActionsInLast24h(bot.id)));
+}
+
+/**
+ * After an action ran without asking: if a controlled-access bot has now used up its
+ * allowance, re-apply the rules to all its open sessions so its next actions ask.
+ */
+async function enforceDailyLimit(bot: Bot, conversationId: ConversationId): Promise<void> {
+  if (bot.approval !== "controlled") return;
+  const used = await autoActionsInLast24h(bot.id);
+  if (used < bot.autoActionsPerDay) return;
+  for (const [k, session] of state.sessions) {
+    if (k.endsWith(`|${bot.id}`)) await applyPermissions(session, bot);
+  }
+  if (used === bot.autoActionsPerDay) await recordLimitReached(bot.id, conversationId, bot.autoActionsPerDay);
+}
+
+/** Write audit rows without letting a database hiccup break the chat; the failure is logged loudly. */
+function logAuditFailure(error: unknown) {
+  console.error("[opencrewbot] could not write the approval/audit trail:", error);
 }
 
 // ── running state ──────────────────────────────────────────────────────
@@ -209,11 +231,17 @@ class TurnFolder {
   private toolPart = new Map<string, number>();
   private input = 0;
   private output = 0;
+  /** Tool calls in this turn that waited for approval, so tool_end can tell "approved" from "ran without asking". */
+  private askedApproval = new Set<string>();
   private resolveDone!: (m: ChatMessage) => void;
   readonly done = new Promise<ChatMessage>((r) => (this.resolveDone = r));
   finished = false;
 
-  constructor(conversationId: ConversationId, bot: Bot, route?: RouteNote) {
+  constructor(
+    conversationId: ConversationId,
+    private readonly bot: Bot,
+    route?: RouteNote,
+  ) {
     this.message = {
       id: randomUUID(),
       conversationId,
@@ -292,7 +320,19 @@ class TurnFolder {
           part = this.tool(event.toolCallId);
         }
         part!.status = "awaiting-approval";
-        this.emit(true);
+        this.askedApproval.add(event.toolCallId);
+        // Show the approval card only once its request is saved, so clicking it always finds the request.
+        void recordApprovalRequest({
+          toolCallId: event.toolCallId,
+          botId: this.bot.id,
+          conversationId: this.message.conversationId,
+          toolName: event.toolName,
+          toolCategory: toolCategory(event.toolName) ?? "other",
+          label: part!.detail ? `${part!.label}: ${part!.detail}` : part!.label,
+          args: event.args,
+        })
+          .catch(logAuditFailure)
+          .finally(() => this.emit(true));
         break;
       }
       case "tool_suspended": {
@@ -314,6 +354,7 @@ class TurnFolder {
         part.preview = toolPreview(event.result);
         part.sources = toolSources(event.result);
         this.emit(true);
+        this.auditToolEnd(part.name, event.toolCallId, Boolean(event.denied), event.isError);
         break;
       }
       case "usage_update": {
@@ -337,6 +378,16 @@ class TurnFolder {
     }
   }
 
+  /** Write how a tool call ended to the audit log, and apply the daily limit after an action that ran without asking. */
+  private auditToolEnd(toolName: string, toolCallId: string, denied: boolean, failed: boolean) {
+    const category = toolCategory(toolName) ?? "other";
+    const how = denied ? "not_run" : this.askedApproval.has(toolCallId) ? "approved" : "auto";
+    const conversationId = this.message.conversationId;
+    void recordToolRun({ botId: this.bot.id, conversationId, toolName, toolCallId, toolCategory: category, how, failed })
+      .then(() => (how === "auto" && ACTION_CATEGORIES.includes(category) ? enforceDailyLimit(this.bot, conversationId) : undefined))
+      .catch(logAuditFailure);
+  }
+
   answer(toolCallId: string, answer: string) {
     const part = this.message.parts.find((p) => p.kind === "question" && p.toolCallId === toolCallId);
     if (part && part.kind === "question") part.answer = answer;
@@ -352,7 +403,13 @@ class TurnFolder {
     }
     this.message.status = status;
     for (const p of this.message.parts) {
-      if (p.kind === "tool" && (p.status === "running" || p.status === "awaiting-approval")) {
+      if (p.kind !== "tool") continue;
+      if (p.status === "awaiting-approval") {
+        // Nobody decided before the run ended, so the action never ran and its request can't be decided any more.
+        const reason = status === "stopped" ? "the run was stopped" : "the run ended before a decision";
+        void expirePendingFor(this.message.conversationId, this.bot.id, p.toolCallId, reason).catch(logAuditFailure);
+      }
+      if (p.status === "running" || p.status === "awaiting-approval") {
         p.status = status === "stopped" ? "denied" : "error";
       }
     }
@@ -409,7 +466,9 @@ async function executeTurn({ bot, conversationId, content, route }: TurnRequest)
     // that says how to fix it, instead of surfacing later as a vague model error.
     if (!isMock()) resolveModelChain(latest);
     const session = await sessionFor(latest, conversationId);
+    await applyPermissions(session, latest);
     unsubscribe = session.subscribe((event) => folder.handle(event));
+    // Settles only when the run ends; a tool call parked on approval keeps it open until you decide.
     await session.sendMessage({ content });
     // The run settled. If no terminal event reached us and nothing waits on the
     // person, close the turn here so it never hangs as "streaming".
@@ -425,10 +484,24 @@ async function executeTurn({ bot, conversationId, content, route }: TurnRequest)
   }
 }
 
+/** What the model is told when you reject an action, so it adapts instead of retrying. */
+const REJECTION_MESSAGE =
+  "The person rejected this action, so it did not run. Do not try it again. Say what you were going to do and ask how they want to proceed.";
+
+/**
+ * Release a tool call parked on approval. Mastra runs the tool only on "approve";
+ * on "decline" the tool's code is never called.
+ * @throws Error when the call is no longer waiting (the bot restarted, the run was stopped, or it was already decided)
+ */
 export async function respondToApproval(conversationId: ConversationId, botId: string, toolCallId: string, approve: boolean) {
   const session = state.sessions.get(key(conversationId, botId));
   if (!session) throw new Error("That request is no longer waiting. The bot may have restarted.");
-  await session.respondToToolApproval({ toolCallId, decision: approve ? "approve" : "decline" });
+  const result = session.respondToToolApproval({
+    toolCallId,
+    decision: approve ? "approve" : "decline",
+    declineContext: approve ? undefined : { reason: "rejected_by_person", message: REJECTION_MESSAGE },
+  });
+  if (!result.accepted) throw new Error(`That request is no longer waiting (${result.reason.replace(/_/g, " ")}).`);
 }
 
 export async function answerQuestion(conversationId: ConversationId, botId: string, toolCallId: string, answer: string) {
