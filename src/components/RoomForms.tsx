@@ -11,7 +11,7 @@ import { BotAvatar, Button, Drawer, Field, Segmented, inputClass } from "./ui";
 export function RoomForm({ room, onDone }: { room?: Room; onDone?: (room: Room) => void }) {
   const { state, open, toast } = useApp();
   const [initial, setInitial] = useState<RoomInput>(() =>
-    room ? { ...room } : { name: "", topic: "", emoji: "", memberIds: [], leadId: null, responder: "auto", pinned: false },
+    room ? { ...room } : { name: "", topic: "", emoji: "", memberIds: [], leadId: null, responder: "auto", mode: "sequential", pinned: false },
   );
   const [form, setForm] = useState<RoomInput>(initial);
   const [saving, setSaving] = useState(false);
@@ -110,6 +110,18 @@ export function RoomForm({ room, onDone }: { room?: Room; onDone?: (room: Room) 
               { value: "auto", label: "Auto", hint: state.status?.keys.jev ? "Jev picks." : "Jev picks (needs key)." },
               { value: "lead", label: "Lead", hint: "The lead answers." },
               { value: "everyone", label: "Everyone", hint: "Each bot answers." },
+            ]}
+          />
+        </Field>
+
+        <Field label="How the bots answering one message work together">
+          <Segmented
+            value={form.mode ?? "sequential"}
+            onChange={(v) => set("mode", v)}
+            options={[
+              { value: "sequential", label: "One by one", hint: "Each sees the answers before it." },
+              { value: "parallel", label: "In parallel", hint: "All answer at once, independently." },
+              { value: "review", label: "With review", hint: "Then the fact-checker challenges weak claims." },
             ]}
           />
         </Field>

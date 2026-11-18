@@ -19,10 +19,11 @@
 // How a task actually runs (an agent turn) is injected with setTaskRunner(): the
 // app wires the real runner at boot (task-runner.ts); tests plug in a fake one.
 import { randomUUID } from "node:crypto";
-import type { ChatMessage, ConversationId, Run, RunDetail, Task } from "@/lib/shared/types";
+import type { ChatMessage, ConversationId, Run, RunDetail, SharedFinding, Task } from "@/lib/shared/types";
 import { canRetry } from "@/lib/shared/runs";
 import * as store from "./db";
 import { publish } from "./bus";
+import { isMock } from "./config";
 
 /** How many tasks may run at the same time, across all runs. Free-tier rate limits are the reason it's small. */
 export const MAX_PARALLEL = Math.max(1, Number(process.env.OPENCREWBOT_MAX_PARALLEL_TASKS) || 3);
@@ -110,6 +111,8 @@ export interface PlannedTask {
   skill?: string;
   agentId: string;
   dependsOn: string[];
+  /** Only when added to a running plan: keys of tasks that haven't started and should wait for this one's result. */
+  feeds?: string[];
 }
 
 export const MAX_PLAN_TASKS = 8;
@@ -134,7 +137,14 @@ export function validatePlan(tasks: PlannedTask[], existingKeys: string[] = []):
       if (!keys.has(dep)) throw new PlanError("PLAN_UNKNOWN_DEPENDENCY", `Task "${task.key}" depends on "${dep}", which isn't in the plan.`);
     }
   }
-  // Cycle check: depth-first search over the new tasks (existing tasks can't depend on new ones).
+  checkNoCycles(tasks);
+}
+
+/**
+ * Depth-first search for a dependency loop.
+ * @throws PlanError PLAN_CYCLE naming the loop, e.g. "a → b → a"
+ */
+function checkNoCycles(tasks: Pick<Task, "key" | "dependsOn">[]): void {
   const byKey = new Map(tasks.map((t) => [t.key, t]));
   const visiting = new Set<string>();
   const done = new Set<string>();
@@ -295,6 +305,9 @@ export async function startRun(input: NewRun): Promise<RunDetail> {
     status: "running",
     createdAt: nowIso(),
     events: [],
+    findings: [],
+    // The mock model's outputs are scripted, so the whole run is labelled SIMULATED.
+    simulated: isMock(),
   };
   const tasks = input.tasks.map((t) => toTask(run.id, t));
   tasks.push(finalTask(run.id, input.plannerBotId, tasks.map((t) => t.key), input.finalOutput));
@@ -442,6 +455,34 @@ function truncate(text: string, max: number): string {
 }
 
 /** The task brief: the plan's goal, this task, and the results of the tasks it depends on. */
+/** At most this many findings are kept per run (the newest), and each is cut to MAX_FINDING_CHARS in a brief. */
+const MAX_FINDINGS = 12;
+const MAX_FINDING_CHARS = 1_500;
+
+/** What teammates shared with share_finding so far, for the brief of a task that starts now. */
+function findingsSection(run: Run): string {
+  const findings = run.findings ?? [];
+  if (!findings.length) return "";
+  const lines = findings.map((f) => `- **${f.by}:** ${truncate(f.text, MAX_FINDING_CHARS)}`);
+  return `## Findings teammates shared so far\n${lines.join("\n")}`;
+}
+
+/**
+ * Record something a teammate did during a run (asked for help, shared a finding), so it shows in
+ * the run's "What happened" list and, for a finding, in the brief of every task that starts later.
+ * Runs under the run's lock, so it can't overwrite a change the engine is making at the same moment.
+ */
+export function noteOnRun(runId: string, text: string, finding?: SharedFinding): Promise<void> {
+  return withRunLock(runId, async () => {
+    const run = await store.getRun(runId);
+    if (!run) return;
+    addEvent(run, text);
+    if (finding) run.findings = [...(run.findings ?? []), finding].slice(-MAX_FINDINGS);
+    await store.saveRun(run);
+    changed(runId);
+  });
+}
+
 export function taskPrompt(run: Run, task: Task, allTasks: Task[], names: Map<string, string>): string {
   const byKey = new Map(allTasks.map((t) => [t.key, t]));
   const inputs = task.dependsOn.map((key) => {
@@ -459,8 +500,12 @@ export function taskPrompt(run: Run, task: Task, allTasks: Task[], names: Map<st
     `What to deliver: ${task.expectedOutput}`,
     task.skill ? `Your "${task.skill}" skill fits this task: load it first with load_skill.` : "",
     inputs.length ? `## Results from the tasks this one builds on\n\n${inputs.join("\n\n")}` : "",
+    findingsSection(run),
+    task.isFinal
+      ? "## Your deliverable\nWrite the WHOLE deliverable in your reply: it's what the person reads in the chat. You may also save it as a report, but never reply with only a link."
+      : "",
     "## How to work",
-    "You're working on your own here: nobody replies in this conversation, so don't @mention teammates or wait for answers. If something needs the person's decision, state your assumption clearly. Reply with the complete result: it goes straight into the plan.",
+    "Nobody replies in this conversation, so don't @mention teammates or wait for answers here. If you have the teamwork tools, ask_teammate gets you an answer, a check or a piece of work from a teammate, and share_finding passes an intermediate result to everyone else on the plan. If something needs the person's decision, state your assumption clearly. Reply with the complete result: it goes straight into the plan.",
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -605,13 +650,29 @@ export async function updateRun(runId: string, change: { cancelKeys: string[]; a
     if (change.add.length) {
       validatePlan(change.add, tasks.filter((t) => !t.isFinal).map((t) => t.key));
       const added = change.add.map((t) => toTask(runId, t));
+      // "feeds": tasks that haven't started yet wait for the new task, so its result reaches their brief
+      // (seen live: without this, a task added mid-run reached only the final write-up).
+      const rewired = new Map<string, Task>();
+      for (const planned of change.add) {
+        for (const key of planned.feeds ?? []) {
+          const target = rewired.get(key) ?? byKey.get(key);
+          if (!target || target.isFinal) throw new PlanError("PLAN_UNKNOWN_DEPENDENCY", `New task "${planned.key}" feeds "${key}", which isn't a task in the plan.`);
+          if (target.status !== "pending") {
+            throw new PlanError("PLAN_RUN_NOT_ACTIVE", `"${key}" has already started, so it can't wait for "${planned.key}". Leave it out of feeds; the final deliverable still gets the result.`);
+          }
+          rewired.set(key, { ...target, dependsOn: [...new Set([...target.dependsOn, planned.key])] });
+        }
+      }
+      checkNoCycles([...tasks.filter((t) => !t.isFinal).map((t) => rewired.get(t.key) ?? t), ...added]);
       for (const task of added) await store.saveTask(task);
+      for (const task of rewired.values()) await store.saveTask(task);
       if (final) {
         final.dependsOn = [...final.dependsOn, ...added.map((t) => t.key)];
         await store.saveTask(final);
       }
     }
-    addEvent(run, `Plan changed: ${change.note}${change.cancelKeys.length ? ` · cancelled ${change.cancelKeys.join(", ")}` : ""}${change.add.length ? ` · added ${change.add.map((t) => t.key).join(", ")}` : ""}.`);
+    const feeds = change.add.filter((t) => t.feeds?.length).map((t) => `${t.feeds!.join(", ")} now wait for ${t.key}`);
+    addEvent(run, `Plan changed: ${change.note}${change.cancelKeys.length ? ` · cancelled ${change.cancelKeys.join(", ")}` : ""}${change.add.length ? ` · added ${change.add.map((t) => t.key).join(", ")}` : ""}${feeds.length ? ` · ${feeds.join("; ")}` : ""}.`);
     await store.saveRun(run);
     changed(runId);
   });
@@ -649,7 +710,9 @@ export async function recoverRuns(): Promise<number> {
       if (task.status !== "running" || state.running.has(task.id)) continue;
       task.status = "pending";
       task.startedAt = undefined;
-      if (task.attempt >= task.maxAttempts) task.maxAttempts = task.attempt + 1; // the restart isn't the task's fault
+      // The restart isn't the task's fault, so the cut-off attempt is given back (seen live: it used to count,
+      // and a following quota error then used up the agent's last attempt).
+      task.attempt = Math.max(0, task.attempt - 1);
       await store.saveTask(task);
       addEvent(run, `"${task.title}" was interrupted by a server restart and will run again.`, task.key);
       recovered++;

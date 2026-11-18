@@ -33,6 +33,7 @@ const planTaskSchema = z.object({
   // Optional because models often leave it out for independent tasks (seen live with Gemini 2.5 Flash):
   // a missing list means "no dependencies" rather than a failed tool call and a retry.
   dependsOn: z.array(z.string()).optional().describe("Keys of the tasks whose results this one needs. Leave empty if none: such tasks run at the same time."),
+  feeds: z.array(z.string()).optional().describe("Only in update_plan: keys of tasks that haven't started yet and should wait for this new task and use its result."),
 });
 
 type PlanTaskInput = z.infer<typeof planTaskSchema>;
@@ -72,6 +73,7 @@ export async function resolvePlanTasks(planner: Pick<Bot, "id">, tasks: PlanTask
       skill: task.skill,
       agentId: owner?.id ?? "",
       dependsOn: task.dependsOn ?? [],
+      feeds: task.feeds,
     };
   });
   if (problems.length) throw new Error(`The plan needs fixing before it can start:\n- ${problems.join("\n- ")}`);
@@ -142,7 +144,7 @@ export function planningTools(planner: Bot): ToolsInput {
     update_plan: createTool({
       id: "update_plan",
       description:
-        "Change the plan running in this conversation, e.g. after the person sends a new instruction: cancel tasks that no longer fit and add new ones (they may depend on existing tasks). The final deliverable waits for the new tasks.",
+        "Change the plan running in this conversation, e.g. after the person sends a new instruction: cancel tasks that no longer fit and add new ones (they may depend on existing tasks). If a task that hasn't started should use a new task's result, list it in the new task's feeds. The final deliverable waits for the new tasks.",
       inputSchema: z.object({
         cancel: z.array(z.string()).describe("Keys of tasks to cancel. Empty if none."),
         add: z.array(planTaskSchema).max(5).describe("New tasks. Empty if none."),
@@ -179,6 +181,78 @@ export function planningTools(planner: Bot): ToolsInput {
         };
       },
     }),
+    create_agent: createTool({
+      id: "create_agent",
+      description:
+        "Create a new teammate when nobody on the team fits the work (Agent Factory). Describe the role, what it must do, the skills and the output it needs. It starts on 'Ask first' (it asks the person before any outside action). In a room, it joins the room.",
+      inputSchema: z.object({
+        description: z.string().min(30).describe("What the agent does, for whom, how, and what it delivers. E.g. 'A pricing analyst who compares study-abroad counselling fees in India and outputs a sourced table.'"),
+        why: z.string().min(5).describe("Why the current team can't do it."),
+      }),
+      execute: async ({ description, why }, context) =>
+        asToolError(async () => {
+          // Loaded here, not at the top: service.ts loads the runtime, which loads these tools.
+          const { createBot, updateRoom } = await import("./service");
+          const { getRoom } = await import("./db");
+          const { draftAgent, writeStartingMemory } = await import("./agent-factory");
+          const draft = await draftAgent(description);
+          // An agent the Chief of Staff creates asks before every outside action, until the person raises its level.
+          // It uses the planner's own model, which is working right now; the factory's tier list doesn't know
+          // which free quotas are used up (seen live: new agents started on a provider out of quota).
+          const bot = await createBot({ ...draft.input, model: planner.model, fallbackModels: planner.fallbackModels, approval: "ask" });
+          writeStartingMemory(bot.id, [...draft.memoryNotes, `Created by ${planner.name} because: ${why}`], planner.name);
+          const conversationId = conversationIdOf(context.requestContext);
+          const roomId = conversationId?.startsWith("room:") ? conversationId.slice("room:".length) : null;
+          const room = roomId ? await getRoom(roomId) : null;
+          if (room) await updateRoom(room.id, { memberIds: [...room.memberIds, bot.id] });
+          return { created: true, handle: bot.handle, name: bot.name, role: bot.title, skills: bot.skills, model: bot.model, joinedRoom: room?.name ?? null, simulatedDraft: draft.simulated };
+        }),
+    }),
+    schedule_workflow: createTool({
+      id: "schedule_workflow",
+      description:
+        "Schedule recurring work (a workflow): e.g. a weekly competitor check or a monthly report. Each run sends the instruction to you (or a teammate) and gets the previous result to compare with. Runs at most every 5 minutes.",
+      inputSchema: z.object({
+        name: z.string().min(2).max(80),
+        instruction: z.string().min(10).describe("What to do on every run, self-contained."),
+        schedule: z.string().describe('A 5-part cron expression in server time, e.g. "0 9 * * 1" (Mondays 09:00) or "*/5 * * * *" (every 5 minutes, for a demo).'),
+        runBy: z.string().describe('Who runs it: a teammate\'s @handle, or "me".'),
+      }),
+      execute: async ({ name, instruction, schedule, runBy }) =>
+        asToolError(async () => {
+          const { createWorkflow, WorkflowError } = await import("./scheduler");
+          const handle = runBy.replace(/^@/, "").toLowerCase();
+          const bot = handle === "me" ? planner : (await listBots()).find((b) => b.handle === handle);
+          if (!bot) throw new Error(`No teammate @${handle}. Use "me" or a teammate's handle.`);
+          try {
+            const workflow = await createWorkflow({ name, instruction, botId: bot.id, schedule, enabled: true });
+            return { scheduled: true, name: workflow.name, runBy: bot.name, nextRunAt: workflow.nextRunAt, note: "The person can pause it, run it now or see its history in Workflows." };
+          } catch (error) {
+            if (error instanceof WorkflowError) throw new Error(error.message);
+            throw error;
+          }
+        }),
+    }),
+    create_room: createTool({
+      id: "create_room",
+      description: "Create a room for a group of teammates working on one area, with you as lead. Use it when the person asks for a new team or the work is ongoing.",
+      inputSchema: z.object({
+        name: z.string().min(2).max(60),
+        topic: z.string().describe("What the room is for."),
+        members: z.array(z.string()).min(1).max(12).describe("Teammates' @handles."),
+      }),
+      execute: async ({ name, topic, members }) =>
+        asToolError(async () => {
+          const { createRoom } = await import("./service");
+          const bots = await listBots();
+          const wanted = members.map((m) => m.replace(/^@/, "").toLowerCase());
+          const found = bots.filter((b) => wanted.includes(b.handle));
+          const missing = wanted.filter((h) => !found.some((b) => b.handle === h));
+          if (missing.length) throw new Error(`No teammate ${missing.map((h) => "@" + h).join(", ")}. Create them first with create_agent.`);
+          const room = await createRoom({ name, topic, emoji: "", memberIds: [planner.id, ...found.map((b) => b.id)], leadId: planner.id, responder: "lead", mode: "sequential", pinned: true });
+          return { created: true, room: room.name, members: found.map((b) => `@${b.handle}`), lead: `@${planner.handle}` };
+        }),
+    }),
   };
 }
 
@@ -194,9 +268,11 @@ const PLANNING_RULES = [
   "- A quick question you can answer from what you know: answer it yourself. Anything that needs research, analysis, writing or several specialists: call create_plan.",
   "- A good plan has 2-6 tasks. Pick each owner by role and skills from the team list below. Write each brief so it stands alone: the teammate sees only the brief and the results of the tasks it depends on.",
   "- Use dependsOn only where a task truly needs another's result; everything else runs at the same time. When facts or numbers matter, add a verification task for the QA teammate before the end.",
+  "- Don't call plan_status to wait for the team: it doesn't speed anything up. Use it only when the person asks how it's going.",
   "- After create_plan, tell the person the plan in a few lines and stop. The team works in the background; progress notices and the final deliverable (which you write as the last step) appear in this conversation.",
   "- If the person changes or adds something while a plan is running, call update_plan (cancel what no longer fits, add what's new). Don't start a second plan.",
-  "- If no teammate fits a task, say so plainly and suggest what kind of agent would; don't pretend.",
+  "- If no teammate fits a task, create one with create_agent (describe the role, skills and output it needs), then assign it. If the work needs its own group of agents, create_room puts them in one room with you as lead.",
+  "- For recurring work (\"every week\", \"each morning\"), call schedule_workflow instead of a one-off plan.",
 ].join("\n");
 
 /** The team roster: everyone the planner can assign, with role, skills and main tools. */

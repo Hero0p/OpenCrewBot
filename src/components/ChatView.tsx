@@ -9,6 +9,7 @@ import { useApp } from "./OpenCrewBotApp";
 import { MessageItem } from "./Message";
 import { Menu } from "./Sidebar";
 import { BotAvatar, IconButton, RoomAvatar } from "./ui";
+import { StartHere } from "./StartHere";
 
 function useClear(conversationId: string) {
   const { dispatch, toast } = useApp();
@@ -368,14 +369,13 @@ export function ChatView() {
 
   if (!id || (!bot && !room)) {
     return (
-      <div className="relative flex flex-1 flex-col items-center justify-center px-6 text-center">
+      <div className="relative flex flex-1 flex-col items-center overflow-y-auto px-6 py-10 text-center">
         {!sidebarOpen && (
           <IconButton label="Show sidebar" className="absolute top-3.5 left-3" onClick={() => setSidebarOpen(true)}>
             <PanelLeft size={18} />
           </IconButton>
         )}
-        <p className="text-[17px] font-medium">{state.loaded ? "Pick a bot or a room" : "Loading…"}</p>
-        {state.loaded && <p className="mt-1.5 max-w-sm text-[14px] text-mute">Every contact is an AI teammate with its own model, tools and memory.</p>}
+        {state.loaded ? <StartHere /> : <p className="text-[17px] font-medium">Loading…</p>}
       </div>
     );
   }

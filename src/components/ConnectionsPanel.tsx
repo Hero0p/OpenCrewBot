@@ -5,7 +5,7 @@ import { ArrowUpRight, Check, Plug, Search, Server, Trash2 } from "lucide-react"
 import { useEffect, useState } from "react";
 import { api } from "@/lib/client/api";
 import { useConnections } from "@/lib/client/use-connections";
-import type { ComposioApp } from "@/lib/shared/types";
+import type { ComposioApp, IntegrationState, IntegrationStatus } from "@/lib/shared/types";
 import { useApp } from "./OpenCrewBotApp";
 import { Button, Drawer, Field, inputClass } from "./ui";
 
@@ -143,6 +143,43 @@ function AddServerForm({ onAdded }: { onAdded: () => void }) {
   );
 }
 
+/** The badge for each integration state: what's really working right now. */
+const STATE_BADGE: Record<IntegrationState, { text: string; className: string }> = {
+  live: { text: "LIVE", className: "bg-ok/15 text-ok" },
+  "not-connected": { text: "NOT CONNECTED", className: "bg-raised-2 text-mute" },
+  "not-configured": { text: "NOT CONFIGURED", className: "bg-raised-2 text-mute" },
+  error: { text: "NOT WORKING", className: "bg-danger-soft text-danger" },
+  untested: { text: "UNTESTED", className: "bg-warn-soft text-warn" },
+};
+
+/** One row per integration: its real state, what that means, and which bots use it. */
+function StatusList({ statuses, mock }: { statuses: IntegrationStatus[]; mock: boolean }) {
+  return (
+    <section className="mt-5">
+      <h3 className="mb-2 text-[12.5px] font-medium text-mute">What&apos;s working</h3>
+      {mock && (
+        <p className="mb-2 rounded-2xl bg-warn-soft px-4 py-3 text-[13px] text-warn">
+          Mock mode: bots run on a scripted model, so their app changes are <strong>SIMULATED</strong>: written to a report in Files, never sent.
+        </p>
+      )}
+      <ul className="divide-y divide-line rounded-2xl bg-raised">
+        {statuses.map((s) => (
+          <li key={s.id} className="px-4 py-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[14px] font-medium">
+                {s.name} <span className="text-[12px] font-normal text-faint">via {s.via}</span>
+              </span>
+              <span className={clsx("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold tracking-wide", STATE_BADGE[s.state].className)}>{STATE_BADGE[s.state].text}</span>
+            </div>
+            <p className="mt-0.5 text-[12.5px] text-mute">{s.detail}</p>
+            <p className="mt-0.5 text-[12px] text-faint">{s.usedBy.length ? `Used by ${s.usedBy.join(", ")}` : "No bot uses it yet (switch it on in a bot's Details)."}</p>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 export function ConnectionsPanel({ onClose }: { onClose: () => void }) {
   const { state, toast } = useApp();
   const { data, error, reload, loading } = useConnections(state.connectionsVersion);
@@ -193,6 +230,8 @@ export function ConnectionsPanel({ onClose }: { onClose: () => void }) {
         Connect apps once, then choose which bots can use each one in the bot&apos;s Details. Actions that change something ask you first, unless the bot has full
         access.
       </p>
+
+      {data && <StatusList statuses={data.statuses} mock={data.mock} />}
 
       <section className="mt-6">
         <div className="mb-2 flex items-center justify-between">

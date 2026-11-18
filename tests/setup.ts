@@ -6,3 +6,5 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 process.env.OPENCREWBOT_DATA_DIR = mkdtempSync(join(tmpdir(), "opencrewbot-test-"));
+// Evidence files (evidence.ts) go to the repo's evidence/ folder by default; tests write theirs here instead.
+process.env.OPENCREWBOT_EVIDENCE_DIR = join(process.env.OPENCREWBOT_DATA_DIR, "evidence");

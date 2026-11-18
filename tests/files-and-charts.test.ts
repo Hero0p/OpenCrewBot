@@ -2,7 +2,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { FILES_DIR, FileAccessError, fileUrl, listFiles, readSpreadsheet, safeFilePath, saveChart, saveReport, saveUpload } from "@/lib/server/files";
+import { FILES_DIR, FileAccessError, fileUrl, inlineReportLinks, listFiles, readSpreadsheet, safeFilePath, saveChart, saveReport, saveUpload } from "@/lib/server/files";
 import { renderChartSvg, validateChart } from "@/lib/server/charts";
 
 describe("safeFilePath", () => {
@@ -65,6 +65,17 @@ describe("saving files", () => {
     expect(saveUpload("Sales Data.csv", Buffer.from("a,b\n1,2"))).toBe("uploads/sales-data.csv");
     expect(() => saveUpload("evil.svg", Buffer.from("<svg/>"))).toThrow(/Only/);
     expect(() => saveUpload("page.html", Buffer.from("<script/>"))).toThrow(/Only/);
+  });
+});
+
+describe("a final write-up that is only a link", () => {
+  it("gets the linked report's text added; a full reply is left alone", () => {
+    const { url } = saveReport("Bakery launch report", "# Bakery launch report\n\nPrice: ₹899 a month incl. GST.");
+    const linkOnly = `Done. The report is here: [report](${url})`;
+    expect(inlineReportLinks(linkOnly)).toContain("Price: ₹899 a month incl. GST.");
+    const long = `${"Full deliverable. ".repeat(120)} See [report](${url})`;
+    expect(inlineReportLinks(long)).toBe(long);
+    expect(inlineReportLinks("No links here.")).toBe("No links here.");
   });
 });
 

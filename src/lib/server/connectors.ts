@@ -2,11 +2,11 @@
 // session, and each MCP server gets its own client.
 import type { ToolsInput } from "@mastra/core/agent";
 import type { Bot } from "@/lib/shared/types";
-import { composioTools } from "./composio";
+import { appActionTools, appActionsCapability } from "./app-actions";
 import { getSetting, setSetting } from "./db";
 import { publish } from "./bus";
 import { listServers, mcpTools } from "./mcp-servers";
-import { keys } from "./config";
+import { isMock, keys } from "./config";
 
 const VERSION_KEY = "connections.version";
 
@@ -39,17 +39,12 @@ export async function buildConnectorTools(bot: Bot, clientId: string): Promise<C
   const capabilities: string[] = [];
   let close = async () => {};
 
-  if (composioSlugs.length && keys.composio()) {
-    try {
-      Object.assign(tools, await composioTools(composioSlugs));
-      capabilities.push(
-        `Use the person's connected apps (${composioSlugs.map(appName).join(", ")}): find the right action with COMPOSIO_SEARCH_TOOLS, then run it with COMPOSIO_MULTI_EXECUTE_TOOL. Actions ask the person first unless you have full access. If an app isn't connected, tell them to connect it in Connections.`,
-      );
-    } catch (error) {
-      capabilities.push(`Connected apps are switched on for you but couldn't load right now (${error instanceof Error ? error.message : "unknown error"}). Say so if asked.`);
-    }
+  // In mock mode the app tools simulate changes (nothing is sent), so they're given even without a key.
+  if (composioSlugs.length && (keys.composio() || isMock())) {
+    Object.assign(tools, appActionTools(composioSlugs));
+    capabilities.push(appActionsCapability(composioSlugs));
   } else if (composioSlugs.length) {
-    capabilities.push("Connected apps are switched on for you, but no COMPOSIO_API_KEY is set, so you can't use them right now.");
+    capabilities.push(`Apps are switched on for you (${composioSlugs.map(appName).join(", ")}), but no COMPOSIO_API_KEY is set, so you can't use them right now. Say so if asked.`);
   }
 
   if (mcpIds.length) {

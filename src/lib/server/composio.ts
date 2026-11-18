@@ -5,7 +5,6 @@
 import { randomUUID } from "node:crypto";
 import { Composio } from "@composio/core";
 import { MastraProvider } from "@composio/mastra";
-import type { ToolsInput } from "@mastra/core/agent";
 import type { ComposioApp } from "@/lib/shared/types";
 import { getSetting, setSetting } from "./db";
 
@@ -80,12 +79,25 @@ export async function disconnectApp(slug: string): Promise<void> {
   for (const account of accounts.items) await c.connectedAccounts.delete(account.id);
 }
 
-/** Tools for the given apps, as one Composio session. Composio exposes a small set of
- * meta tools (search, then execute) instead of every action, which keeps the tool
- * list short enough for open models. */
-export async function composioTools(slugs: string[]): Promise<ToolsInput> {
-  const c = client();
-  if (!c || slugs.length === 0) return {};
-  const session = await c.create(await userId(), { toolkits: slugs, manageConnections: false });
-  return (await session.tools()) as unknown as ToolsInput;
+/**
+ * A Composio session limited to these apps, for finding and running their actions (app-actions.ts).
+ * @throws Error naming COMPOSIO_API_KEY when it isn't set
+ */
+export async function composioSession(slugs: string[]) {
+  return requireClient().create(await userId(), { toolkits: slugs, manageConnections: false });
+}
+
+/**
+ * A Composio failure in words that say how to fix it. Composio reports a bad key as
+ * "401 … Invalid API key" (seen on 2026-11-18 with a key starting "ck_", which isn't a project API key).
+ */
+export function describeComposioError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/\b401\b|invalid api key/i.test(message)) {
+    return "Composio rejected COMPOSIO_API_KEY (401 Invalid API key). Create a project API key at platform.composio.dev (your project → Settings → API Keys), put it in .env and restart.";
+  }
+  if (/ConnectedAccountNotFound|no connected account|not connected/i.test(message)) {
+    return `That app isn't connected yet: connect it in Connections, then try again. (${message.slice(0, 200)})`;
+  }
+  return message;
 }

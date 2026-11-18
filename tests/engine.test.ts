@@ -97,7 +97,7 @@ async function agent(name: string, skills: string[]): Promise<Bot> {
     emoji: "",
     color: "#fff",
     model: "google/gemini-2.5-flash",
-    tools: { webSearch: false, memory: false, codeMode: false, browser: false, askUser: false, files: false, planning: false },
+    tools: { webSearch: false, memory: false, codeMode: false, browser: false, askUser: false, files: false, planning: false, teamwork: false },
     approval: "ask",
     pinned: false,
     skills,
@@ -282,6 +282,19 @@ describe("controlling a plan", () => {
     expect(calls.find((c) => c.key === "final")?.prompt).toContain("### Task c");
   });
 
+  it("lets a task added mid-run feed a task that hasn't started, and refuses feeding one that has", async () => {
+    behaviour = (t) => (t.key === "a" ? delay(300).then(() => ({ ok: true, output: "a" })) : delay(10).then(() => ({ ok: true, output: `result of ${t.key}` })));
+    const { run } = await newRun([task("a", researcherA.id), task("b", writer.id, ["a"])]);
+    await delay(50);
+    await expect(updateRun(run.id, { cancelKeys: [], add: [{ ...task("x", researcherB.id), feeds: ["a"] }], note: "too late for a" })).rejects.toThrow(/already started/);
+    await updateRun(run.id, { cancelKeys: [], add: [{ ...task("c", researcherB.id), feeds: ["b"] }], note: "b should use c" });
+    await finished(run.id);
+    const tasks = await listTasks(run.id);
+    expect(tasks.find((t) => t.key === "b")?.dependsOn).toEqual(["a", "c"]);
+    expect(calls.find((c) => c.key === "b")?.prompt).toContain("result of c");
+    expect(tasks.some((t) => t.key === "x")).toBe(false);
+  });
+
   it("refuses plan changes that don't fit", async () => {
     behaviour = () => delay(200).then(() => ({ ok: true, output: "ok" }));
     const { run } = await newRun([task("a", researcherA.id)]);
@@ -309,5 +322,7 @@ describe("restart recovery", () => {
     const done = await finished(run.id);
     expect(done.status).toBe("completed");
     expect(done.events.some((e) => e.text.includes("interrupted by a server restart"))).toBe(true);
+    // The cut-off attempt doesn't count against the task: it finishes on attempt 1 again.
+    expect((await getTask(a.id))?.attempt).toBe(1);
   });
 });

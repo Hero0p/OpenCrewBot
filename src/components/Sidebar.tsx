@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import { BookOpen, Brain, ListChecks, MoreHorizontal, PanelLeft, Pin, Plug, Plus, Search, Settings, ShieldCheck, X } from "lucide-react";
+import { BookOpen, Brain, CalendarClock, House, ListChecks, MoreHorizontal, PanelLeft, Pin, Plug, Plus, Search, Settings, ShieldCheck, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/client/api";
 import { timeLabel } from "@/lib/client/format";
@@ -181,11 +181,11 @@ function SidebarFooter() {
   const liveProviders = status?.providers.filter((p) => p.configured).map((p) => p.label) ?? [];
   const waitingApprovals = usePendingApprovalCount();
   return (
-    <div className="flex items-center gap-1 border-t border-line px-3 py-3">
+    <div className="border-t border-line px-3 py-3">
       <button
         type="button"
         onClick={() => setPanel({ kind: "settings" })}
-        className="flex h-10 min-w-0 shrink items-center gap-2 rounded-xl px-3 ring-1 ring-line transition-colors hover:bg-hover hover:ring-line-strong"
+        className="mb-2 flex h-9 w-full min-w-0 items-center gap-2 rounded-xl px-3 ring-1 ring-line transition-colors hover:bg-hover hover:ring-line-strong"
         title={status?.mock ? "Bots use the scripted mock model" : `Models from ${liveProviders.join(", ")}`}
       >
         <span className="shrink-0 text-[10px] font-semibold tracking-[0.08em] text-faint uppercase">Models</span>
@@ -193,10 +193,11 @@ function SidebarFooter() {
           {status?.mock ? "Mock mode" : liveProviders.join(" · ")}
         </span>
       </button>
+      <div className="flex items-center justify-between">
       <IconButton
         label={waitingApprovals ? `Approval Centre · ${waitingApprovals} waiting` : "Approval Centre"}
         onClick={() => setPanel({ kind: "approvals" })}
-        className="relative ml-auto"
+        className="relative"
       >
         <ShieldCheck size={18} />
         {waitingApprovals > 0 && (
@@ -207,6 +208,9 @@ function SidebarFooter() {
       </IconButton>
       <IconButton label="Tasks and runs" onClick={() => setPanel({ kind: "runs" })}>
         <ListChecks size={18} />
+      </IconButton>
+      <IconButton label="Workflows (scheduled)" onClick={() => setPanel({ kind: "workflows" })}>
+        <CalendarClock size={18} />
       </IconButton>
       <IconButton label="Memory" onClick={() => setPanel({ kind: "memory" })}>
         <Brain size={18} />
@@ -223,12 +227,13 @@ function SidebarFooter() {
           <span className={clsx("absolute top-1.5 right-1.5 h-2 w-2 rounded-full ring-2 ring-side", status.mock ? "bg-warn" : "bg-faint")} />
         )}
       </IconButton>
+      </div>
     </div>
   );
 }
 
 export function Sidebar() {
-  const { state, setPanel, setSidebarOpen } = useApp();
+  const { state, open, setPanel, setSidebarOpen } = useApp();
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
   const [newMenu, setNewMenu] = useState(false);
@@ -259,6 +264,9 @@ export function Sidebar() {
       <header className="flex h-16 shrink-0 items-center justify-end gap-1.5 px-3">
         <IconButton label="Hide sidebar" onClick={() => setSidebarOpen(false)} className="mr-auto hidden md:inline-flex">
           <PanelLeft size={18} />
+        </IconButton>
+        <IconButton label="Home: start here" onClick={() => open(null)} className="bg-raised">
+          <House size={17} />
         </IconButton>
         <IconButton
           label="Search"

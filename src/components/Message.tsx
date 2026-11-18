@@ -92,6 +92,7 @@ function ToolChip({ message, part }: { message: ChatMessage; part: ToolPart }) {
         <ToolIcon name={part.name} />
         <span className="shrink-0 font-medium whitespace-nowrap text-ink">{part.label}</span>
         {part.detail && <span className="min-w-0 truncate text-mute">{part.detail}</span>}
+        {part.simulated && <SimulatedBadge title="Mock mode: nothing was sent to the app." />}
         <span className="ml-auto flex shrink-0 items-center gap-1.5">
           {canWatch && (
             <span
@@ -220,6 +221,15 @@ function Reasoning({ text, live }: { text: string; live: boolean }) {
   );
 }
 
+/** Marks output that didn't come from a real model or a real app (the assignment asks for every simulated output to be labelled). */
+export function SimulatedBadge({ title }: { title: string }) {
+  return (
+    <span title={title} className="shrink-0 rounded-full bg-warn-soft px-1.5 py-px text-[10.5px] font-semibold tracking-wide text-warn">
+      SIMULATED
+    </span>
+  );
+}
+
 function routeLabel(message: ChatMessage): string | null {
   const r = message.route;
   if (!r) return null;
@@ -230,6 +240,10 @@ function routeLabel(message: ChatMessage): string | null {
       return "mentioned";
     case "handoff":
       return "handed off";
+    case "review":
+      return "reviewing";
+    case "resume":
+      return "resumed after a restart";
     case "lead":
       return "room lead";
     case "everyone":
@@ -297,6 +311,7 @@ export function MessageItem({ message, bot, showAuthor }: { message: ChatMessage
         <div className="mb-1.5 flex items-center gap-2 pl-1">
           {bot && <BotAvatar bot={bot} size={22} />}
           <span className="text-[13.5px] font-medium text-ink">{bot?.name ?? "Deleted bot"}</span>
+          {message.model === "mock" && <SimulatedBadge title="Written by the mock model (a script, not an AI): not real work." />}
           {route && <span className="text-[12px] text-faint">{route}</span>}
         </div>
       )}

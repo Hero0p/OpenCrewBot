@@ -48,6 +48,16 @@ Give each bot a name, a role, instructions, a model and a set of tools. Each rep
 
 The details panel keeps a short summary of the bot, with the full editor one click away. Changes apply from the bot's next reply.
 
+**Create an agent by describing it (Agent Factory).** In **New bot**, write what you need in plain words ("a pricing analyst called Priya who compares study-abroad counselling fees in India and gives me a sourced table") and press **Draft it**. Every field fills in for you to review: name, role, instructions, model, tools, skills, starting memory, permission level and output format.
+
+The draft is checked in code:
+- only skills from the library;
+- a model from OpenCrewBot's own list for the kind of work;
+- memory always on, and no browser or planning;
+- at most Controlled access.
+
+**Create** saves it, and you can chat with it straight away. Its starting memory is stamped "by: you · in: Agent Factory". The Chief of Staff can do the same with its `create_agent` tool when nobody on the team fits a task (those agents start on Ask first), and can put agents in a new room with `create_room`. In mock mode, the draft comes from keyword rules and says so.
+
 ### Rooms
 
 Put bots in a room and talk to all of them at once. @mention a bot to choose who answers, or `@everyone`. With no mention, an **Auto** room asks [Jev](https://typesafe.ai), TypeSafe's decision model, to pick the best bot in a few hundred milliseconds. If Jev isn't sure, the room's lead answers. A bot can @mention a teammate to hand work on, up to two hops.
@@ -63,6 +73,25 @@ Put bots in a room and talk to all of them at once. @mention a bot to choose who
 </div>
 
 _One message, three bots. Jev picks Atlas to answer, Atlas hands research to Scout and drafting to Quill. Staged example content._
+
+**How the bots answering one message work together** is set per room:
+- **One by one**: each sees the answers before it.
+- **In parallel**: all start at the same time.
+- **With review**: after the answers, the room's fact-checker reviews them and @mentions whoever made a weak claim, who then defends or revises it.
+
+**Agents work with each other**, in rooms, plans and chats, through two tools:
+- `ask_teammate`: a *question*, a piece of work to *delegate*, a claim to *verify*, or a conclusion to *challenge*. The teammate answers in its own conversation, and the answer comes back to the asker.
+- `share_finding`: posts an intermediate result. In a team plan, every task that starts later gets it in its brief.
+
+Every exchange is shown where the work is ("💬 Vega asked for verification from Quinn", "↩ Quinn answered Vega") and in the plan's history.
+
+**Loops are stopped in code:**
+- A chain of requests is at most 3 agents deep, and nobody can ask back someone already waiting on them.
+- The same question is asked once.
+- Two agents get 3 exchanges per piece of work and the team 12, within a token budget (`OPENCREWBOT_COLLAB_TOKEN_BUDGET`).
+- A room message leads to at most 8 replies, with at most 2 hand-offs between the same two bots.
+
+A message being answered is saved after every reply, so after a restart the bots still to answer do ("↻ Picking up after a restart").
 
 ### Team plans (Chief of Staff)
 
@@ -154,6 +183,47 @@ Give bots access to Slack, GitHub, Gmail, Notion and the rest of your tools. Ope
 
 Then switch each connection on for the bots that should have it, in the bot's Details. Lookups run on their own; anything that changes something (sending a message, opening an issue) shows an approval card first, unless the bot has full access. Tokens stay on the server.
 
+**What's working** at the top of Connections shows each integration's real state, and the bots that use it:
+
+| Badge | Meaning |
+| --- | --- |
+| **LIVE** | Connected (Composio), or tested OK since the app started (MCP) |
+| **NOT CONNECTED** | Composio is set up, but you haven't signed in to this app yet |
+| **NOT CONFIGURED** | No `COMPOSIO_API_KEY` |
+| **NOT WORKING** | Composio rejected the key (the message says how to fix it), or the server's last test failed |
+| **UNTESTED** | An MCP server that hasn't been tested since the app started |
+
+Bots use connected apps through three tools whose permissions are decided **per action**:
+- `find_app_actions` finds the action that does what's needed.
+- `read_from_app` runs anything that only reads (GET, LIST, SEARCH, FETCH…) on its own, and refuses an action that changes something.
+- `act_in_app` (create, post, send) asks first, per the bot's permission level, showing the bot's plain-words summary and the exact inputs.
+
+**In mock mode, app changes are SIMULATED:** they're written to a "SIMULATED …" report in Files and never sent, and a SIMULATED badge marks them in the chat.
+
+### Workflows (scheduled)
+
+Open **Workflows** (calendar icon) to schedule work that repeats: a weekly competitor check, a monthly report, a daily summary. Or ask the Chief of Staff ("check our competitors every Monday at 09:00"), who uses `schedule_workflow`.
+
+A workflow has three parts:
+- an instruction;
+- the agent who runs it (usually the Chief of Staff, who can turn it into a team plan);
+- a schedule: a preset or a cron expression, at most every 5 minutes.
+
+Each run saves its status, trigger, duration, result, report file and transcript, and gets the previous run's result, so it can say what changed. You can **Run now**, **Pause** and **Resume**. A run that was due while the app was off runs once when it starts again ("catch-up"). A failed run is reported in the agent's chat and shown red in the history.
+
+### Start here, and LIVE vs SIMULATED
+
+The home screen (house icon):
+- explains the app in three steps;
+- says whether answers are **LIVE** (real models) or **SIMULATED** (mock model);
+- offers ready-made MeetUniversity goals that go to the Chief of Staff.
+
+Simulated output is badged everywhere it appears: bot replies, tool steps, team runs and workflow runs.
+
+### Evidence for demonstrations
+
+**Save as evidence** writes a Markdown file into `evidence/` (`OPENCREWBOT_EVIDENCE_DIR`). It's on a finished run (Tasks and runs) and on the Approval Centre's audit log. Each file records the plan, timeline, every task's output, models and tool steps, the approvals and the result, labelled LIVE or SIMULATED. `docs/DEMOS.md` walks through the seven MeetUniversity demonstrations.
+
 ## Architecture
 
 ### Mastra runs the bots
@@ -198,6 +268,8 @@ Add your keys to `.env`, then restart `pnpm dev`. Every key is optional:
 | `OPENCREWBOT_DATA_DIR` | Where data lives (default `./data`). |
 | `OPENCREWBOT_MAX_PARALLEL_TASKS` | Optional. How many team-plan tasks run at the same time, across all runs (default 3; free-tier rate limits are why it's small). |
 | `OPENCREWBOT_TASK_TIMEOUT_MINUTES` | Optional. How long one attempt of a task may run before it's stopped (default 15; waiting for your approval counts). |
+| `OPENCREWBOT_COLLAB_TOKEN_BUDGET` | Optional. How many tokens teammates' answers (`ask_teammate`) may use on one piece of work (default 200,000). |
+| `OPENCREWBOT_EVIDENCE_DIR` | Optional. Where **Save as evidence** writes (default `./evidence`). |
 | `OPENCREWBOT_SKILLS_DIR` | Where the skills library lives (default `./skills`). |
 | `OPENCREWBOT_ALLOWED_HOSTS` | Extra host names the API answers to, comma-separated. Only for deliberate setups behind your own sign-in. |
 
@@ -235,6 +307,11 @@ It assumes one local owner and has no sign-in. To keep it that way, `pnpm dev` a
 | Rooms | @mentions, `@everyone`, Auto routing with Jev, Lead and Everyone modes, bot-to-bot hand-offs |
 | Memory | Five layers (your preferences, team decisions, project, room, agent) plus run history; who/when/why on every entry; Memory Manager to read and edit them; secret redaction |
 | Team plans | Chief of Staff plans with checked owners and skills; parallel tasks, retry, hand-off to a teammate with the same skill, timeout, cancel, change of plan, restart recovery; Tasks and runs panel with a timeline |
+| Collaboration | Ask a teammate (question, delegate, verify, challenge) and share findings; room modes (one by one, in parallel, with review); loop limits and budgets; rooms resume after a restart |
+| Agent Factory | Describe an agent in plain words, review the checked draft, create it; the Chief of Staff can create agents and rooms |
+| Integrations | Per-action permissions for app actions (reads run, changes ask); LIVE / NOT CONNECTED / NOT CONFIGURED / NOT WORKING / UNTESTED badges; SIMULATED changes in mock mode |
+| Workflows | Scheduled instructions with Run now, pause / resume, history, reports, comparison with the previous run, catch-up after downtime, failure reports |
+| Evidence | Save a run or the audit log as a Markdown evidence file, labelled LIVE or SIMULATED |
 | Approvals | Allow once / Deny cards for browser actions, plus ask-you question cards that resume the run |
 | Browser | Browserbase session per bot, embedded live view with takeover, release on reset |
 | Code mode | Multi-tool TypeScript in a QuickJS sandbox with no filesystem or network access |
@@ -244,10 +321,18 @@ It assumes one local owner and has no sign-in. To keep it that way, `pnpm dev` a
 
 **OpenCrewBot 2.0, November 18, 2026, with live free-tier models (Gemini, Groq, OpenRouter):** a Chief of Staff plan in a direct chat (research → fact-check → final report); a plan started in a room with two tasks running at the same time, changed mid-run with `update_plan`; the final write-up failing on quota, its retry, the unedited fallback, and the plan reopened and completed on another model; a preference taught to one agent, remembered by another after a restart, and a hand edit in the Memory Manager followed on the next reply. The Tasks and runs panel and the Memory Manager were checked in a browser. Reassignment to a teammate with the same skill, timeouts and restart recovery mid-run are covered by automated tests, not yet seen live.
 
+**Steps 10-15 (collaboration, Agent Factory, integrations, workflows, Start here, evidence)** are covered by automated tests (138 in total), most of them with the mock model running the real pipeline, and the new screens were checked in a browser. **Step 16 (November 18, 2026) ran them live** on free-tier models: teammate verification, the Agent Factory, review and parallel rooms, workflows, failure recovery with a server killed mid-run, a rejected app action that never ran, and a dry run of an unseen business problem. See `docs/TESTING_EVIDENCE.md`. GitHub, Notion and Slack actions after approval are still unverified: Composio rejected the configured key.
+
+**Free-tier quotas decide what you can demo.** Measured on November 18, 2026:
+- Gemini 2.5 Flash's free tier allows **20 requests a day**.
+- OpenRouter's free models allow 50 a day.
+- Groq allows 8,000 tokens a minute, less than most agent requests.
+
+Gemini's lite models (`gemini-3.5-flash-lite`, `gemini-3.1-flash-lite`, `gemini-flash-lite-latest`) have separate quotas and ran the live tests well. Spread your agents across them in each agent's Details.
+
 ### Extending it
 
 - Let bots delegate to each other in direct chats with Mastra subagents.
-- Add scheduled routines with Mastra schedules.
 - Let Jev pick the model for each message (fast for simple asks, strong for hard ones). It's shown as "coming soon" in the model sheet.
 - Let you talk to bots from Slack or Discord with Mastra Channels.
 - Add sign-in and multiple users before deploying it anywhere shared.
@@ -262,7 +347,14 @@ It assumes one local owner and has no sign-in. To keep it that way, `pnpm dev` a
 - `src/lib/server/memory-layers.ts`: the memory layers (which file each is), who/when/why stamps, projects, and the shared memory each bot reads.
 - `src/lib/server/engine.ts`: the execution engine: a run's task graph, parallel waves, retry, reassignment, timeout, cancel, change of plan and restart recovery.
 - `src/lib/server/task-runner.ts`: how the engine runs one task (an agent turn in the task's own conversation) and writes run history.
-- `src/lib/server/planning.ts`: the Chief of Staff's tools (`create_plan`, `update_plan`, `plan_status`) and what a planner sees about its team.
+- `src/lib/server/planning.ts`: the Chief of Staff's tools (`create_plan`, `update_plan`, `plan_status`, `create_agent`, `create_room`, `schedule_workflow`) and what a planner sees about its team.
+- `src/lib/server/collaboration.ts`: `ask_teammate` and `share_finding`, and the loop guards (`checkExchange`).
+- `src/lib/server/rooms.ts`: room routing, modes, reply budget, hand-off limits and resuming after a restart.
+- `src/lib/server/agent-factory.ts`: drafting and checking an agent from a description.
+- `src/lib/server/app-actions.ts` and `integrations.ts`: the per-action app tools (reads run, changes ask) and each integration's real state.
+- `src/lib/server/scheduler.ts` and `src/lib/shared/schedules.ts`: workflows, the scheduler loop, catch-up and run history.
+- `src/lib/server/evidence.ts`: evidence files for the demonstrations.
+- `docs/DEMOS.md`: how to run and record the seven MeetUniversity demonstrations.
 - `src/lib/server/browserbase.ts`: creates, announces and releases each bot's Browserbase session.
 - `src/lib/shared/providers.ts`: the model providers (names, env vars, recommended models) and model-id helpers.
 - `src/lib/server/providers.ts`: which providers have a key, and the default model.

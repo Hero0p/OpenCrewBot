@@ -13,6 +13,7 @@ import { timeLabel } from "@/lib/client/format";
 import { canRetry } from "@/lib/shared/runs";
 import type { ChatMessage, RunDetail, RunStatus, RunSummary, Task, TaskStatus } from "@/lib/shared/types";
 import { useApp } from "./OpenCrewBotApp";
+import { SimulatedBadge } from "./Message";
 import { BotAvatar, Button, Drawer, inputClass } from "./ui";
 
 const RUN_STATUS: Record<RunStatus, { text: string; className: string }> = {
@@ -216,6 +217,16 @@ function RunView({ runId, onBack }: { runId: string; onBack: () => void }) {
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2">
           <Badge {...RUN_STATUS[run.status]} />
+          {run.simulated && <SimulatedBadge title="Ran on the mock model: every result here is scripted, not real work." />}
+          {run.status !== "running" && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => api.saveRunEvidence(run.id).then(({ file }) => toast(`Saved to evidence/${file}`), (e) => toast(e instanceof Error ? e.message : "Couldn't save."))}
+            >
+              Save as evidence
+            </Button>
+          )}
           {run.status === "running" && (
             <Button size="sm" variant="danger" onClick={() => api.cancelRun(run.id).then(() => toast("Run cancelled."), (e) => toast(e instanceof Error ? e.message : "Couldn't cancel."))}>
               Cancel run
@@ -324,7 +335,10 @@ export function RunsPanel({ onClose }: { onClose: () => void }) {
                       {tasks.failed ? ` · ${tasks.failed} failed` : ""}
                     </span>
                   </span>
-                  <Badge {...RUN_STATUS[run.status]} />
+                  <span className="flex shrink-0 items-center gap-1.5">
+                    {run.simulated && <SimulatedBadge title="Ran on the mock model: scripted, not real work." />}
+                    <Badge {...RUN_STATUS[run.status]} />
+                  </span>
                 </button>
               </li>
             ))}

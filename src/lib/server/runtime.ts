@@ -24,7 +24,8 @@ import { conversationIdOf } from "./request-context";
 import { conversationContext } from "./conversation-context";
 import { sharedMemoryFor } from "./memory-layers";
 import { mockPlan, planningSections } from "./planning";
-import { buildTools, toolCategory, toolLabel, toolPreview, toolSources } from "./tools";
+import { teamSections } from "./collaboration";
+import { buildTools, isSimulatedResult, toolCategory, toolLabel, toolPreview, toolSources } from "./tools";
 
 // ── shared state that must survive Next.js hot reloads ─────────────────
 
@@ -124,7 +125,7 @@ async function buildRuntime(bot: Bot): Promise<BotRuntime> {
       const where = await conversationContext(conversationId);
       return systemPrompt(holder.bot, capabilities, builtIn.instructions, {
         shared: await sharedMemoryFor(where.room),
-        extraSections: await planningSections(holder.bot, conversationId),
+        extraSections: [...(await planningSections(holder.bot, conversationId)), ...(await teamSections(holder.bot))],
       });
     },
     // The chain is rebuilt on every call from the latest saved bot, so a model switch applies to the next reply.
@@ -375,6 +376,7 @@ class TurnFolder {
         part.status = event.denied ? "denied" : event.isError ? "error" : "done";
         part.preview = toolPreview(event.result);
         part.sources = toolSources(event.result);
+        part.simulated = isSimulatedResult(event.result) || undefined;
         this.emit(true);
         this.auditToolEnd(part.name, event.toolCallId, Boolean(event.denied), event.isError);
         break;

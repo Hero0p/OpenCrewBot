@@ -19,7 +19,9 @@ import { createProject, listProjects, provenanceComment, provenanceTime, readMem
 import { recoverRuns, setTaskRunner } from "./engine";
 import { agentTaskRunner } from "./task-runner";
 import { messagePreview } from "@/lib/shared/preview";
-import { roomConversationId, runRoom } from "./rooms";
+import { resumeRoomRounds, roomConversationId, runRoom } from "./rooms";
+import { setTeammateRunner } from "./collaboration";
+import { recoverWorkflowRuns, setWorkflowTurnRunner, startScheduler } from "./scheduler";
 
 export { InputError };
 
@@ -37,7 +39,15 @@ export function boot(): Promise<void> {
     await seedSharedMemory();
     // The engine runs tasks as agent turns; then any run cut off by a restart continues.
     setTaskRunner(agentTaskRunner);
+    // A teammate asked with ask_teammate answers in its own conversation, as a normal turn.
+    setTeammateRunner({ run: (bot, conversationId, content) => runTurn({ bot, conversationId, content }), stop: stopConversation });
     await recoverRuns();
+    // Room messages that were still being answered when the server stopped carry on.
+    await resumeRoomRounds();
+    // Scheduled workflows: each run is a normal turn; runs cut off by a restart are marked, then the loop starts.
+    setWorkflowTurnRunner((bot, conversationId, content) => runTurn({ bot, conversationId, content }));
+    await recoverWorkflowRuns();
+    startScheduler();
   })();
   return g.__opencrewbotBoot;
 }
@@ -149,7 +159,7 @@ const SEED_MARKER = join(DATA_DIR, ".seeded");
 
 async function seed() {
   if (existsSync(SEED_MARKER)) return;
-  const tools = { webSearch: true, memory: true, codeMode: false, browser: false, askUser: true, files: false, planning: false };
+  const tools = { webSearch: true, memory: true, codeMode: false, browser: false, askUser: true, files: false, planning: false, teamwork: true };
   const model = defaultModel();
   const scout = await createBot({
     name: "Scout",
@@ -267,7 +277,7 @@ export async function createBot(input: BotInput): Promise<Bot> {
     autoActionsPerDay: input.autoActionsPerDay ?? DEFAULT_AUTO_ACTIONS_PER_DAY,
     skills: input.skills ?? [],
     outputFormat: input.outputFormat ?? "",
-    tools: { ...input.tools, files: input.tools.files ?? false, planning: input.tools.planning ?? false },
+    tools: { ...input.tools, files: input.tools.files ?? false, planning: input.tools.planning ?? false, teamwork: input.tools.teamwork ?? true },
     // null or absent: automatic fallbacks (see automaticFallbacks in shared/providers.ts).
     fallbackModels: input.fallbackModels ?? undefined,
     handle: await uniqueHandle(input.handle || input.name),

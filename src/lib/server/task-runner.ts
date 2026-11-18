@@ -11,6 +11,7 @@ import { forgetConversation, runTurn, stopConversation } from "./runtime";
 import { messageText } from "./rooms";
 import { memoryFilePath, provenanceComment, provenanceTime } from "./memory-layers";
 import { writeTextFile } from "./memory-files";
+import { inlineReportLinks } from "./files";
 
 async function post(message: ChatMessage): Promise<void> {
   await saveMessage(message);
@@ -50,7 +51,8 @@ export const agentTaskRunner: TaskRunner = {
     await post({ id: randomUUID(), conversationId, role: "user", createdAt: new Date().toISOString(), status: "done", parts: [{ kind: "text", text: prompt }] });
     const reply = await runTurn({ bot, conversationId, content: prompt });
     if (!reply) return { ok: false, error: "stopped before it started" };
-    if (reply.status === "done") return { ok: true, output: messageText(reply) };
+    // The final write-up must carry the deliverable itself, not only a link to a saved report.
+    if (reply.status === "done") return { ok: true, output: task.isFinal ? inlineReportLinks(messageText(reply)) : messageText(reply) };
     return { ok: false, error: reply.error ?? `the turn ended as "${reply.status}"` };
   },
   async stop(task) {

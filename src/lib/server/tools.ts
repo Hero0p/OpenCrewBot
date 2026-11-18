@@ -16,6 +16,8 @@ import { getSkill } from "./skills";
 import { MAX_ROWS, fileUrl, listFiles, readSpreadsheet, saveChart, saveReport } from "./files";
 import { CHART_LIMITS, renderChartSvg } from "./charts";
 import { planningTools } from "./planning";
+import { TEAMWORK_CAPABILITY, collaborationTools } from "./collaboration";
+import { actionLabel } from "./app-actions";
 
 export const CODE_MODE_TOOL = "execute_typescript";
 
@@ -236,9 +238,13 @@ export function buildTools(bot: Bot): BotToolset {
   if (bot.skills.length) {
     Object.assign(tools, skillTools(bot.skills));
   }
+  if (bot.tools.teamwork) {
+    Object.assign(tools, collaborationTools(bot));
+    capabilities.push(TEAMWORK_CAPABILITY);
+  }
   if (bot.tools.planning) {
     Object.assign(tools, planningTools(bot));
-    capabilities.push("Plan and run team work with create_plan, update_plan and plan_status (see \"How you run team work\").");
+    capabilities.push("Plan and run team work with create_plan, update_plan and plan_status (see \"How you run team work\"); create missing teammates with create_agent and rooms with create_room.");
   }
   // Code Mode is added last, so the program it writes can call every tool above (e.g. read_spreadsheet).
   if (bot.tools.codeMode) {
@@ -273,9 +279,16 @@ export function toolCategory(toolName: string): ToolCategory | null {
   // These write only inside OpenCrewBot's own Files folder, like memory does.
   if (["make_chart", "save_report"].includes(toolName)) return "edit";
   // Planning starts and changes team work inside OpenCrewBot; each task's own external actions are gated by its agent's level.
-  if (["create_plan", "update_plan"].includes(toolName)) return "edit";
+  // Creating agents and rooms also stays inside OpenCrewBot; a created agent starts on "Ask first".
+  if (["create_plan", "update_plan", "create_agent", "create_room", "schedule_workflow"].includes(toolName)) return "edit";
   if (toolName === "plan_status") return "read";
-  // Composio: looking up actions is free; running them ("multi execute", the remote workbench) asks.
+  // Asking a teammate runs their turn under their own permission level; sharing writes inside OpenCrewBot only.
+  if (toolName === "ask_teammate") return "read";
+  if (toolName === "share_finding") return "edit";
+  // Connected apps (app-actions.ts): looking up and reading run on their own; changing something asks.
+  if (toolName === "find_app_actions" || toolName === "read_from_app") return "read";
+  if (toolName === "act_in_app") return "mcp";
+  // Composio's own meta tools (no longer given to bots): looking up is free; running asks.
   if (toolName.startsWith("COMPOSIO_")) {
     return /SEARCH_TOOLS|GET_TOOL_SCHEMAS|MANAGE_CONNECTIONS/.test(toolName) ? "read" : "mcp";
   }
@@ -312,10 +325,16 @@ export const TOOL_CATALOG: ToolInfo[] = [
   { name: "browser_snapshot", label: "Browser reading", description: "Reads what the browser shows (snapshots, scrolling, tabs).", category: "read", enabledBy: "browser", needsKey: "BROWSERBASE_API_KEY" },
   { name: "create_plan", label: "Start a team plan", description: "Breaks a request into tasks for teammates and starts the execution engine (Chief of Staff).", category: "edit", enabledBy: "planning" },
   { name: "update_plan", label: "Change the team plan", description: "Cancels and adds tasks in the running plan, e.g. after a new instruction.", category: "edit", enabledBy: "planning" },
+  { name: "create_agent", label: "Create an agent", description: "Agent Factory: creates a new teammate from a description when nobody fits (starts on Ask first).", category: "edit", enabledBy: "planning" },
+  { name: "schedule_workflow", label: "Schedule a workflow", description: "Schedules recurring work (e.g. a weekly competitor check) that shows up in Workflows.", category: "edit", enabledBy: "planning" },
+  { name: "create_room", label: "Create a room", description: "Creates a room for a group of teammates, with the planner as lead.", category: "edit", enabledBy: "planning" },
   { name: "plan_status", label: "Check the team plan", description: "Reads each task's status, attempts, errors and results.", category: "read", enabledBy: "planning" },
+  { name: "ask_teammate", label: "Ask a teammate", description: "Asks a teammate a question, hands them work, gets a claim verified or challenges a conclusion, and waits for the answer.", category: "read", enabledBy: "teamwork" },
+  { name: "share_finding", label: "Share a finding", description: "Shares an intermediate result with everyone on the same work; later plan tasks see it.", category: "edit", enabledBy: "teamwork" },
   { name: "ask_user", label: "Ask me", description: "Pauses and asks you a question with a card in chat.", category: "read", enabledBy: "askUser" },
-  { name: "COMPOSIO_SEARCH_TOOLS", label: "Find app actions", description: "Looks up what a connected app (GitHub, Notion, Slack…) can do.", category: "read", enabledBy: "connections", needsKey: "COMPOSIO_API_KEY" },
-  { name: "COMPOSIO_MULTI_EXECUTE_TOOL", label: "Run app actions", description: "Runs actions in connected apps: create an issue, send a message, add a page…", category: "mcp", enabledBy: "connections", needsKey: "COMPOSIO_API_KEY" },
+  { name: "find_app_actions", label: "Find app actions", description: "Looks up which action of a connected app (GitHub, Notion, Slack…) does what you need.", category: "read", enabledBy: "connections", needsKey: "COMPOSIO_API_KEY" },
+  { name: "read_from_app", label: "Read from an app", description: "Runs an app action that only reads (list issues, search pages). Refuses anything that changes something.", category: "read", enabledBy: "connections", needsKey: "COMPOSIO_API_KEY" },
+  { name: "act_in_app", label: "Act in an app", description: "Runs an app action that changes something (create an issue, post a message), after your approval. SIMULATED in mock mode.", category: "mcp", enabledBy: "connections", needsKey: "COMPOSIO_API_KEY" },
 ];
 
 // ── how tool calls look in chat ─────────────────────────────────────────
@@ -336,6 +355,9 @@ function composioAction(slug: string): string {
 
 export function toolLabel(name: string, args: unknown): { label: string; detail?: string } {
   const a = (args ?? {}) as Record<string, unknown>;
+  if (name === "find_app_actions") return { label: "Looked up app actions", detail: `${String(a.app ?? "")}: ${String(a.need ?? "")}` };
+  if (name === "read_from_app") return { label: `Read from ${actionLabel(String(a.action ?? "app_"))}` };
+  if (name === "act_in_app") return { label: actionLabel(String(a.action ?? "app_action")), detail: String(a.summary ?? "") };
   if (name.startsWith("COMPOSIO_")) {
     if (/SEARCH_TOOLS/.test(name)) {
       const queries = Array.isArray(a.queries) ? a.queries.map((q) => (q as { use_case?: string })?.use_case ?? q) : [];
@@ -384,6 +406,18 @@ export function toolLabel(name: string, args: unknown): { label: string; detail?
       return { label: "Changed the team plan", detail: String(a.note ?? "") };
     case "plan_status":
       return { label: "Checked the team plan" };
+    case "create_agent":
+      return { label: "Created a new agent", detail: String(a.description ?? "").slice(0, 120) };
+    case "create_room":
+      return { label: "Created a room", detail: String(a.name ?? "") };
+    case "schedule_workflow":
+      return { label: "Scheduled a workflow", detail: String(a.name ?? "") };
+    case "ask_teammate": {
+      const verbs: Record<string, string> = { question: "Asked", delegate: "Handed work to", verify: "Asked for a check from", challenge: "Challenged" };
+      return { label: `${verbs[String(a.kind)] ?? "Asked"} @${String(a.teammate ?? "").replace(/^@/, "")}`, detail: String(a.message ?? "").slice(0, 120) };
+    }
+    case "share_finding":
+      return { label: "Shared a finding", detail: String(a.finding ?? "").slice(0, 120) };
     default:
       if (name.startsWith("browser_")) {
         const action = name.slice("browser_".length).replace(/_/g, " ");
@@ -391,6 +425,13 @@ export function toolLabel(name: string, args: unknown): { label: string; detail?
       }
       return { label: name.replace(/_/g, " ") };
   }
+}
+
+/** A tool result that says it only pretended: app-actions.ts returns { simulated: true } or { mock: true } in mock mode. */
+export function isSimulatedResult(result: unknown): boolean {
+  if (!result || typeof result !== "object") return false;
+  const r = result as { simulated?: unknown; mock?: unknown };
+  return r.simulated === true || r.mock === true;
 }
 
 export function toolSources(result: unknown): Source[] | undefined {

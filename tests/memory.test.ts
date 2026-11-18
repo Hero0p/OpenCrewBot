@@ -90,7 +90,7 @@ describe("where a bot's memory goes", () => {
       emoji: "",
       color: "#fff",
       model: "google/gemini-2.5-flash",
-      tools: { webSearch: false, memory: true, codeMode: false, browser: false, askUser: false, files: false, planning: false },
+      tools: { webSearch: false, memory: true, codeMode: false, browser: false, askUser: false, files: false, planning: false, teamwork: false },
       approval: "ask",
       pinned: false,
     });
@@ -111,7 +111,7 @@ describe("Demo 6 in miniature: a taught preference reaches the next prompt, and 
     emoji: "",
     color: "#3b82f6",
     model: "google/gemini-2.5-flash",
-    tools: { webSearch: false, memory: true, codeMode: false, browser: false, askUser: false, files: false, planning: false },
+    tools: { webSearch: false, memory: true, codeMode: false, browser: false, askUser: false, files: false, planning: false, teamwork: false },
     skills: [],
     outputFormat: "",
     connections: [],

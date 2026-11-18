@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import { Check } from "lucide-react";
+import { Check, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/client/api";
 import type { ActionGroup, Bot, BotInput } from "@/lib/shared/types";
@@ -22,7 +22,7 @@ function blankBot(defaultModel: string): BotInput {
     emoji: "",
     color: BOT_COLORS[Math.floor(Math.random() * BOT_COLORS.length)],
     model: defaultModel,
-    tools: { webSearch: true, memory: true, codeMode: false, browser: false, askUser: true, files: true, planning: false },
+    tools: { webSearch: true, memory: true, codeMode: false, browser: false, askUser: true, files: true, planning: false, teamwork: true },
     approval: "ask",
     preapprovedActions: [],
     autoActionsPerDay: 20,
@@ -62,6 +62,47 @@ export function ColorPicker({ value, onChange }: { value: string; onChange: (c: 
   );
 }
 
+/**
+ * Agent Factory: describe the agent you need in plain words; the server drafts every field
+ * (checked against the skills library and model tiers) and the form fills in for you to review.
+ */
+function AgentFactoryBox({ onDraft }: { onDraft: (input: BotInput, memoryNotes: string[], notes: string[]) => void }) {
+  const { toast } = useApp();
+  const [description, setDescription] = useState("");
+  const [busy, setBusy] = useState(false);
+  const draft = async () => {
+    setBusy(true);
+    try {
+      const { draft } = await api.draftAgent(description);
+      onDraft(draft.input, draft.memoryNotes, draft.notes);
+      toast("Drafted. Review the fields below, then create it.");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Couldn't draft that agent.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="rounded-2xl bg-raised-2 p-4 ring-1 ring-line">
+      <p className="flex items-center gap-1.5 text-[13.5px] font-medium">
+        <Sparkles size={14} /> Describe the agent you need
+      </p>
+      <p className="mt-0.5 text-[12.5px] text-mute">Plain words are fine. Everything below gets filled in for you to check.</p>
+      <textarea
+        className={clsx(inputClass, "mt-2 min-h-20")}
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+        placeholder="A pricing analyst called Priya who compares study-abroad counselling fees in India and gives me a sourced comparison table."
+      />
+      <div className="mt-2 flex justify-end">
+        <Button size="sm" onClick={draft} disabled={busy || description.trim().length < 15}>
+          {busy ? "Drafting…" : "Draft it"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 /** Create or edit a bot. In edit mode the save bar appears only once something changes. */
 export function BotForm({ bot, onDone }: { bot?: Bot; onDone?: (bot: Bot) => void }) {
   const { state, open, toast } = useApp();
@@ -69,6 +110,9 @@ export function BotForm({ bot, onDone }: { bot?: Bot; onDone?: (bot: Bot) => voi
   const [initial, setInitial] = useState<BotInput>(() => (bot ? { ...bot } : blankBot(defaultModel)));
   const [form, setForm] = useState<BotInput>(initial);
   const [saving, setSaving] = useState(false);
+  // Agent Factory: starting memory lines and review notes for a drafted agent.
+  const [memoryNotes, setMemoryNotes] = useState("");
+  const [draftNotes, setDraftNotes] = useState<string[]>([]);
   const keys = state.status?.keys;
   const dirty = JSON.stringify(form) !== JSON.stringify(initial);
 
@@ -88,7 +132,8 @@ export function BotForm({ bot, onDone }: { bot?: Bot; onDone?: (bot: Bot) => voi
         toast("Saved. Changes apply from the next reply.");
         onDone?.(saved);
       } else {
-        const { bot: created } = await api.createBot(form);
+        const notes = memoryNotes.split("\n").map((l) => l.trim()).filter(Boolean);
+        const { bot: created } = await api.createBot(form, notes);
         open(`dm:${created.id}`);
         onDone?.(created);
       }
@@ -112,6 +157,27 @@ export function BotForm({ bot, onDone }: { bot?: Bot; onDone?: (bot: Bot) => voi
   return (
     <div className="flex flex-col">
       <div className="space-y-5">
+        {!bot && (
+          <AgentFactoryBox
+            onDraft={(input, notes, review) => {
+              setForm(input);
+              setMemoryNotes(notes.join("\n"));
+              setDraftNotes(review);
+            }}
+          />
+        )}
+        {!bot && draftNotes.length > 0 && (
+          <ul className="space-y-1 rounded-xl bg-warn-soft px-3.5 py-2.5 text-[12.5px] text-warn">
+            {draftNotes.map((n) => (
+              <li key={n}>{n}</li>
+            ))}
+          </ul>
+        )}
+        {!bot && (
+          <Field label="Starting memory" hint="One fact per line, written to its MEMORY.md with where it came from.">
+            <textarea className={clsx(inputClass, "min-h-16")} value={memoryNotes} onChange={(e) => setMemoryNotes(e.target.value)} placeholder="Optional" />
+          </Field>
+        )}
         {!bot && (
           <div className="flex flex-col items-center gap-4 pt-1">
             <Mascot color={form.color} size={72} />
@@ -204,6 +270,12 @@ export function BotForm({ bot, onDone }: { bot?: Bot; onDone?: (bot: Bot) => voi
               hint="Chief of Staff: breaks requests into tasks for teammates, runs them in parallel and writes the final deliverable."
               checked={form.tools.planning ?? false}
               onChange={(v) => setTool("planning", v)}
+            />
+            <Toggle
+              label="Works with teammates"
+              hint="Can ask a teammate a question, hand over work, get a claim verified, challenge a conclusion and share findings."
+              checked={form.tools.teamwork ?? true}
+              onChange={(v) => setTool("teamwork", v)}
             />
           </div>
         </div>

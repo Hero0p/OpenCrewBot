@@ -27,6 +27,8 @@ export interface AppState {
   runsVersion: number;
   /** Bumped when any memory file changes, so the Memory Manager refetches. */
   memoryFilesVersion: number;
+  /** Bumped when a workflow or its runs change, so the Workflows screen refetches. */
+  workflowsVersion: number;
 }
 
 export const initialState: AppState = {
@@ -45,6 +47,7 @@ export const initialState: AppState = {
   approvalsVersion: 0,
   runsVersion: 0,
   memoryFilesVersion: 0,
+  workflowsVersion: 0,
 };
 
 export type Action =
@@ -181,6 +184,8 @@ function applyEvent(state: AppState, event: ServerEvent): AppState {
       return { ...state, runsVersion: state.runsVersion + 1 };
     case "memory-files-changed":
       return { ...state, memoryFilesVersion: state.memoryFilesVersion + 1 };
+    case "workflows-changed":
+      return { ...state, workflowsVersion: state.workflowsVersion + 1 };
     case "bots-changed":
     case "rooms-changed":
       // The provider refetches the bootstrap payload for these.

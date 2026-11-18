@@ -21,7 +21,13 @@ import type {
   RunSummary,
   Skill,
   SkillsState,
+  Workflow,
+  WorkflowInput,
+  WorkflowRun,
 } from "@/lib/shared/types";
+
+/** A workflow as the Workflows screen gets it: with its latest runs and whether one is in progress. */
+export type WorkflowWithRuns = Workflow & { runs: WorkflowRun[]; running: boolean };
 
 async function call<T>(path: string, init?: RequestInit & { json?: unknown }): Promise<T> {
   const res = await fetch(path, {
@@ -49,7 +55,10 @@ export interface Bootstrap {
 export const api = {
   bootstrap: () => call<Bootstrap>("/api/bootstrap"),
   models: (refresh = false) => call<{ models: ModelOption[] }>(`/api/models${refresh ? "?refresh=1" : ""}`),
-  createBot: (input: BotInput) => call<{ bot: Bot }>("/api/bots", { method: "POST", json: input }),
+  createBot: (input: BotInput, memoryNotes: string[] = []) => call<{ bot: Bot }>("/api/bots", { method: "POST", json: { ...input, memoryNotes } }),
+  /** Agent Factory: a checked draft from a description (not saved). */
+  draftAgent: (description: string) =>
+    call<{ draft: { input: BotInput; memoryNotes: string[]; notes: string[]; simulated: boolean } }>("/api/bots/draft", { method: "POST", json: { description } }),
   updateBot: (id: string, patch: Partial<BotInput>) => call<{ bot: Bot }>(`/api/bots/${id}`, { method: "PATCH", json: patch }),
   deleteBot: (id: string) => call(`/api/bots/${id}`, { method: "DELETE" }),
   getMemory: (id: string) => call<{ content: string; path: string; limit: { lines: number; bytes: number } }>(`/api/bots/${id}/memory`),
@@ -93,6 +102,13 @@ export const api = {
   cancelRun: (id: string) => call(`/api/runs/${id}/cancel`, { method: "POST" }),
   cancelTask: (id: string) => call(`/api/tasks/${id}/cancel`, { method: "POST" }),
   retryTask: (id: string) => call(`/api/tasks/${id}/retry`, { method: "POST" }),
+  saveRunEvidence: (id: string) => call<{ file: string }>(`/api/runs/${id}/evidence`, { method: "POST" }),
+  saveAuditEvidence: () => call<{ file: string }>("/api/approvals/evidence", { method: "POST" }),
+  workflows: () => call<{ workflows: WorkflowWithRuns[] }>("/api/workflows"),
+  createWorkflow: (input: WorkflowInput) => call<{ workflow: Workflow }>("/api/workflows", { method: "POST", json: input }),
+  updateWorkflow: (id: string, patch: Partial<WorkflowInput>) => call<{ workflow: Workflow }>(`/api/workflows/${id}`, { method: "PATCH", json: patch }),
+  deleteWorkflow: (id: string) => call(`/api/workflows/${id}`, { method: "DELETE" }),
+  runWorkflow: (id: string) => call<{ run: WorkflowRun }>(`/api/workflows/${id}/run`, { method: "POST" }),
   approvals: () => call<ApprovalsState>("/api/approvals"),
   decideApproval: (id: string, approve: boolean) => call<{ approval: ApprovalRecord }>(`/api/approvals/${id}`, { method: "POST", json: { approve } }),
 };

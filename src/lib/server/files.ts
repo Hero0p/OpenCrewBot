@@ -44,6 +44,30 @@ export function safeFilePath(relativePath: string): string {
   return absolute;
 }
 
+/** A reply shorter than this that links to a saved report is "only a link". */
+const LINK_ONLY_CHARS = 1_500;
+
+/**
+ * If a short reply only points at reports it saved ("You can read it here: /api/files/reports/x.md"),
+ * add those reports' text, so the deliverable shown in the chat and kept in history isn't just a link
+ * (seen live with Gemini 3.5 Flash-Lite as the Chief of Staff). Longer replies come back unchanged.
+ * @param text - the reply
+ * @returns the reply, followed by each linked report's Markdown when it was only a link
+ */
+export function inlineReportLinks(text: string): string {
+  if (text.length > LINK_ONLY_CHARS) return text;
+  const links = [...text.matchAll(/\/api\/files\/(reports\/[^\s)"']+\.md)/g)].map((m) => decodeURIComponent(m[1]));
+  const reports: string[] = [];
+  for (const path of [...new Set(links)]) {
+    try {
+      reports.push(readFileSync(safeFilePath(path), "utf8"));
+    } catch {
+      // A link to a report that doesn't exist (or outside Files) is left as it is.
+    }
+  }
+  return reports.length ? `${text}\n\n---\n\n${reports.join("\n\n---\n\n")}` : text;
+}
+
 /** The URL the app serves a file at (see src/app/api/files/[...path]/route.ts). */
 export function fileUrl(relativePath: string): string {
   return `/api/files/${relativePath.split("/").map(encodeURIComponent).join("/")}`;

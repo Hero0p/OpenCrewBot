@@ -2,7 +2,8 @@
 // or when OPENCREWBOT_MOCK_MODE=true forces it.
 // It streams a short reply and exercises the same paths a real model does:
 // "remember …" calls the memory tool, "search …" calls web search, "ask me …"
-// asks a question card, and "open <url>" drives the browser (which asks first).
+// asks a question card, "open <url>" drives the browser (which asks first), and
+// "ask @quinn to verify …" asks a teammate (ask_teammate).
 import { MastraLanguageModelV2Mock } from "@mastra/core/test-utils/llm-mock";
 
 type Part = Record<string, unknown>;
@@ -92,6 +93,13 @@ export function createMockModel(botName: string, settings: { plan?: (goal: strin
         return { stream: streamOf([...start, ...textParts(result), { type: "finish", finishReason: "stop", usage }]) };
       }
 
+      // A teammate's request (collaboration.ts): answer with a clearly labelled simulated answer.
+      if (fullText.startsWith("[Teammate request")) {
+        const request = fullText.split("\n\n")[1] ?? "the request";
+        const answer = `**SIMULATED answer (mock model, not real work)** from ${botName} to: "${request.slice(0, 160)}"`;
+        return { stream: streamOf([...start, ...textParts(answer), { type: "finish", finishReason: "stop", usage }]) };
+      }
+
       // Room turns wrap the room's new lines; use the person's latest line.
       const lines = fullText.split("\n").filter(Boolean);
       const personLine = lines.filter((l) => l.startsWith("Person: ")).pop();
@@ -101,6 +109,16 @@ export function createMockModel(botName: string, settings: { plan?: (goal: strin
         // Facts about the person ("I like…", "my name…") are their preferences, shared with every bot.
         const aboutThePerson = /\b(i|my|me|i'm|i am)\b/i.test(remember[1]);
         return toolCall("memory_add", { note: remember[1], scope: aboutThePerson ? "user" : "mine", why: "the person asked me to remember it" });
+      }
+      // "post <text> to #channel on Slack": an app action that changes something, so it waits for approval (Demo 7).
+      const slackPost = said.match(/\bpost\s+"?(.+?)"?\s+to\s+(?:the\s+)?(#[\w-]+)(?:\s+channel)?\s+on\s+slack/i);
+      if (slackPost && tools.has("act_in_app")) {
+        return toolCall("act_in_app", { action: "SLACK_SEND_MESSAGE", arguments: { channel: slackPost[2], text: slackPost[1] }, summary: `Post "${slackPost[1]}" to ${slackPost[2]}` });
+      }
+      const askTeammate = said.match(/\bask @([a-z0-9_-]+)\s+(?:to\s+)?(.{10,})/i);
+      if (askTeammate && tools.has("ask_teammate")) {
+        const kind = /\b(verify|check|fact-check)\b/i.test(askTeammate[2]) ? "verify" : /\bchallenge\b/i.test(askTeammate[2]) ? "challenge" : "question";
+        return toolCall("ask_teammate", { teammate: askTeammate[1], kind, message: askTeammate[2] });
       }
       if (/\bask me\b/i.test(said) && tools.has("ask_user")) {
         return toolCall("ask_user", {

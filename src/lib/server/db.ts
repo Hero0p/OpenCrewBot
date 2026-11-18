@@ -3,7 +3,7 @@
 import { createClient, type Client } from "@libsql/client";
 import { APP_DB_URL } from "./config";
 import { DEFAULT_AUTO_ACTIONS_PER_DAY } from "./permissions";
-import type { ApprovalRecord, ApprovalStatus, AuditEntry, AuditEvent, Bot, ChatMessage, ConversationId, Room, Run, Task } from "@/lib/shared/types";
+import type { ApprovalRecord, ApprovalStatus, AuditEntry, AuditEvent, Bot, ChatMessage, ConversationId, Room, RoomRound, Run, Task, Workflow, WorkflowRun } from "@/lib/shared/types";
 
 // Cached across hot reloads, together with the file it points at, so a
 // changed database path opens a fresh connection instead of reusing one
@@ -11,7 +11,7 @@ import type { ApprovalRecord, ApprovalStatus, AuditEntry, AuditEvent, Bot, ChatM
 const g = globalThis as unknown as { __opencrewbotDb?: { url: string; schema?: number; client: Promise<Client> } };
 
 /** Bump when a table is added, so a hot-reloaded server re-runs the CREATE statements. */
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 async function open(): Promise<Client> {
   const db = createClient({ url: APP_DB_URL });
@@ -60,6 +60,12 @@ async function open(): Promise<Client> {
       "CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, status TEXT NOT NULL, created_at TEXT NOT NULL, data TEXT NOT NULL)",
       "CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, run_id TEXT NOT NULL, status TEXT NOT NULL, data TEXT NOT NULL)",
       "CREATE INDEX IF NOT EXISTS tasks_by_run ON tasks (run_id)",
+      // Rooms: the state of each message being answered, so a restart can resume it (rooms.ts).
+      "CREATE TABLE IF NOT EXISTS room_rounds (id TEXT PRIMARY KEY, room_id TEXT NOT NULL, status TEXT NOT NULL, data TEXT NOT NULL)",
+      // The scheduler: workflows and the history of their runs (scheduler.ts).
+      "CREATE TABLE IF NOT EXISTS workflows (id TEXT PRIMARY KEY, data TEXT NOT NULL)",
+      "CREATE TABLE IF NOT EXISTS workflow_runs (id TEXT PRIMARY KEY, workflow_id TEXT NOT NULL, started_at TEXT NOT NULL, status TEXT NOT NULL, data TEXT NOT NULL)",
+      "CREATE INDEX IF NOT EXISTS workflow_runs_by_workflow ON workflow_runs (workflow_id, started_at)",
     ],
     "write",
   );
@@ -103,7 +109,8 @@ function normalizeBot(raw: Bot): Bot {
     skills: raw.skills ?? [],
     outputFormat: raw.outputFormat ?? "",
     // Bots saved before the Files tool existed have no `files` switch.
-    tools: { ...raw.tools, files: raw.tools.files ?? false, planning: raw.tools.planning ?? false },
+    // Teamwork (Step 10) is on for bots saved before it existed: every bot can ask a teammate.
+    tools: { ...raw.tools, files: raw.tools.files ?? false, planning: raw.tools.planning ?? false, teamwork: raw.tools.teamwork ?? true },
   };
 }
 
@@ -132,16 +139,21 @@ export async function deleteBotRow(id: string): Promise<void> {
 
 // ── rooms ───────────────────────────────────────────────────────────────
 
+/** Rooms saved before room modes existed work one bot after another, as they always did. */
+function normalizeRoom(raw: Room): Room {
+  return { ...raw, mode: raw.mode ?? "sequential" };
+}
+
 export async function listRooms(): Promise<Room[]> {
   const rows = await (await db()).execute("SELECT data FROM rooms");
   return rows.rows
-    .map((r) => JSON.parse(String(r.data)) as Room)
+    .map((r) => normalizeRoom(JSON.parse(String(r.data)) as Room))
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
 export async function getRoom(id: string): Promise<Room | null> {
   const rows = await (await db()).execute({ sql: "SELECT data FROM rooms WHERE id = ?", args: [id] });
-  return rows.rows[0] ? (JSON.parse(String(rows.rows[0].data)) as Room) : null;
+  return rows.rows[0] ? normalizeRoom(JSON.parse(String(rows.rows[0].data)) as Room) : null;
 }
 
 export async function saveRoom(room: Room): Promise<void> {
@@ -289,6 +301,71 @@ export async function getTask(id: string): Promise<Task | null> {
 export async function listTasks(runId: string): Promise<Task[]> {
   const rows = await (await db()).execute({ sql: "SELECT data FROM tasks WHERE run_id = ?", args: [runId] });
   return rows.rows.map((r) => JSON.parse(String(r.data)) as Task).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+// ── room rounds ─────────────────────────────────────────────────────────
+
+export async function saveRoomRound(round: RoomRound): Promise<void> {
+  await (await db()).execute({
+    sql: `INSERT INTO room_rounds (id, room_id, status, data) VALUES (?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET status = excluded.status, data = excluded.data`,
+    args: [round.id, round.roomId, round.status, JSON.stringify(round)],
+  });
+}
+
+/** Rounds that were still being answered (when the server stopped, these were cut off). */
+export async function listRunningRoomRounds(): Promise<RoomRound[]> {
+  const rows = await (await db()).execute("SELECT data FROM room_rounds WHERE status = 'running'");
+  return rows.rows.map((r) => JSON.parse(String(r.data)) as RoomRound);
+}
+
+// ── workflows (the scheduler) ───────────────────────────────────────────
+
+export async function saveWorkflow(workflow: Workflow): Promise<void> {
+  await (await db()).execute({
+    sql: "INSERT INTO workflows (id, data) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+    args: [workflow.id, JSON.stringify(workflow)],
+  });
+}
+
+export async function getWorkflow(id: string): Promise<Workflow | null> {
+  const rows = await (await db()).execute({ sql: "SELECT data FROM workflows WHERE id = ?", args: [id] });
+  return rows.rows[0] ? (JSON.parse(String(rows.rows[0].data)) as Workflow) : null;
+}
+
+export async function listWorkflows(): Promise<Workflow[]> {
+  const rows = await (await db()).execute("SELECT data FROM workflows");
+  return rows.rows.map((r) => JSON.parse(String(r.data)) as Workflow).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+/** Deletes the workflow and its run history. */
+export async function deleteWorkflowRow(id: string): Promise<void> {
+  const client = await db();
+  await client.execute({ sql: "DELETE FROM workflow_runs WHERE workflow_id = ?", args: [id] });
+  await client.execute({ sql: "DELETE FROM workflows WHERE id = ?", args: [id] });
+}
+
+export async function saveWorkflowRun(run: WorkflowRun): Promise<void> {
+  await (await db()).execute({
+    sql: `INSERT INTO workflow_runs (id, workflow_id, started_at, status, data) VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET status = excluded.status, data = excluded.data`,
+    args: [run.id, run.workflowId, run.startedAt, run.status, JSON.stringify(run)],
+  });
+}
+
+export async function getWorkflowRun(id: string): Promise<WorkflowRun | null> {
+  const rows = await (await db()).execute({ sql: "SELECT data FROM workflow_runs WHERE id = ?", args: [id] });
+  return rows.rows[0] ? (JSON.parse(String(rows.rows[0].data)) as WorkflowRun) : null;
+}
+
+/** Newest first. Without a workflow id: every workflow's runs. */
+export async function listWorkflowRuns(workflowId?: string, limit = 50): Promise<WorkflowRun[]> {
+  const rows = await (await db()).execute(
+    workflowId
+      ? { sql: "SELECT data FROM workflow_runs WHERE workflow_id = ? ORDER BY started_at DESC LIMIT ?", args: [workflowId, limit] }
+      : { sql: "SELECT data FROM workflow_runs ORDER BY started_at DESC LIMIT ?", args: [limit] },
+  );
+  return rows.rows.map((r) => JSON.parse(String(r.data)) as WorkflowRun);
 }
 
 // ── audit log (append-only) ─────────────────────────────────────────────

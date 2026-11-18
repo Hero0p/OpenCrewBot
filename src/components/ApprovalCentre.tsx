@@ -41,6 +41,8 @@ function useConversationName() {
     const [kind, ref] = id.split(":");
     if (kind === "dm") return `Chat with ${state.bots.find((b) => b.id === ref)?.name ?? "a deleted bot"}`;
     if (kind === "task") return "A task of a team plan (see Tasks and runs)";
+    if (kind === "collab") return "Answering a teammate's request";
+    if (kind === "workflow") return "A scheduled workflow (see Workflows)";
     return state.rooms.find((r) => r.id === ref)?.name ?? "A deleted room";
   };
 }
@@ -86,8 +88,12 @@ function WaitingCard({ request }: { request: ApprovalRecord }) {
         className="mt-1 text-[12.5px] text-mute hover:text-ink hover:underline"
         onClick={() => {
           // A task's conversation isn't a chat; its run is shown in Tasks and runs.
-          if (request.conversationId.startsWith("task:")) {
+          if (request.conversationId.startsWith("task:") || request.conversationId.startsWith("collab:")) {
             setPanel({ kind: "runs" });
+            return;
+          }
+          if (request.conversationId.startsWith("workflow:")) {
+            setPanel({ kind: "workflows" });
             return;
           }
           open(request.conversationId);
@@ -157,7 +163,12 @@ function AuditRow({ entry }: { entry: AuditEntry }) {
 }
 
 export function ApprovalCentre({ onClose }: { onClose: () => void }) {
-  const { state } = useApp();
+  const { state, toast } = useApp();
+  const saveEvidence = () =>
+    api.saveAuditEvidence().then(
+      ({ file }) => toast(`Saved to evidence/${file}`),
+      (e) => toast(e instanceof Error ? e.message : "Couldn't save the evidence."),
+    );
   const { data, error, loading } = useApprovals(state.approvalsVersion);
   const [tab, setTab] = useState<Tab>("waiting");
   const waiting = data?.pending.length ?? 0;
@@ -203,7 +214,12 @@ export function ApprovalCentre({ onClose }: { onClose: () => void }) {
 
       {data && tab === "audit" && (
         <>
-          <p className="mb-2 text-[12px] text-faint">Every tool call, approval and decision, newest first. Entries are never changed or deleted.</p>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-[12px] text-faint">Every tool call, approval and decision, newest first. Entries are never changed or deleted.</p>
+            <Button size="sm" variant="ghost" onClick={saveEvidence}>
+              Save as evidence
+            </Button>
+          </div>
           <ul className="divide-y divide-line rounded-2xl bg-raised">
             {data.audit.map((e) => (
               <AuditRow key={e.id} entry={e} />

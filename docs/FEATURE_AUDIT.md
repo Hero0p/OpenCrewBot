@@ -85,7 +85,7 @@ Approve/Deny card clicked
 | Requirement | Original status | Evidence | What we add |
 |---|---|---|---|
 | Create agents without editing code | ✅ Implemented | "New bot" form (`BotForms.tsx`) → stored in the `bots` table | Keep |
-| Create agents from natural language | ❌ Missing | Form only | Planned (Agent Factory step) |
+| Create agents from natural language | ❌ Missing | Form only | ✅ **Step 11:** Agent Factory (`agent-factory.ts`): a description → a drafted, code-checked agent (skills from the library, model from our tier list, memory on, no browser/planning, at most Controlled) → reviewed in the New bot form → created with stamped starting memory. The Chief of Staff's `create_agent` / `create_room` do it inside a plan (agents start on Ask first) |
 | Name, role, persona, model, tools | ✅ Implemented | `Bot` type in `types.ts`: name, title, description, instructions, model, tools | Kept; new **Files and charts** tool switch |
 | Memory | ✅ Implemented | Every bot gets its own `MEMORY.md` | Extend (memory layers step) |
 | Skills | ❌ Missing | No skills concept | ✅ **Step 5-6:** `Bot.skills` (ids from `skills/`), chosen per bot in the form |
@@ -98,11 +98,11 @@ Approve/Deny card clicked
 | Requirement | Original status | Evidence | What we add |
 |---|---|---|---|
 | Rooms | ✅ Implemented | `rooms` table, `RoomForms.tsx`, one seeded room ("Studio") | ✅ **Step 5:** 5 more rooms, each led by the Chief of Staff (Market Intelligence, Marketing Campaign, Business Analysis, Dev Team, Operations) |
-| Delegation between agents | 🟡 Partial | A bot can @mention a teammate in its reply; up to 2 hops (`MAX_HANDOFF_DEPTH = 2`) | 🟡 **Step 9:** the planner delegates as plan tasks. A message that @mentions the planner goes to it alone, and a reply that started or changed a plan creates no @mention hand-offs (seen live: without this, teammates did their task twice, once as a task and once in the room). Structured delegate / ask / verify messages come in Step 10 |
-| Ask questions / share research / challenge / request verification | ❌ Missing | Only free-text @mentions; no structured message types | Planned |
-| Parallel collaboration | ❌ Missing | Sequential only | ✅ **Step 8-9:** a plan's independent tasks run at the same time, each agent in its own task conversation; a task that needs another's result gets it as input |
-| Resume after interruption | 🟡 Partial | The transcript survives a restart, but in-flight turns are marked "Interrupted by a server restart" and never resumed (`service.ts` `sweepInterrupted()`) | 🟡 **Step 8:** team runs resume: on start, `recoverRuns()` puts interrupted tasks back in the queue (plain chat turns still don't resume). The planner can change a running plan with `update_plan` |
-| Loop prevention | 🟡 Partial | Hop limit of 2 and no duplicate bot in the queue. No turn budget, no cost budget, no cycle detection beyond that | 🟡 **Step 8:** plans: cycle check, at most 8 tasks per plan, one active plan per conversation, no plans inside a task. Cost budget still planned |
+| Delegation between agents | 🟡 Partial | A bot can @mention a teammate in its reply; up to 2 hops (`MAX_HANDOFF_DEPTH = 2`) | 🟡 **Step 9:** the planner delegates as plan tasks. A message that @mentions the planner goes to it alone, and a reply that started or changed a plan creates no @mention hand-offs (seen live: without this, teammates did their task twice, once as a task and once in the room). ✅ **Step 10:** `ask_teammate` with kind `delegate` hands a teammate a piece of work and waits for the result |
+| Ask questions / share research / challenge / request verification | ❌ Missing | Only free-text @mentions; no structured message types | ✅ **Step 10:** `ask_teammate` (question, delegate, verify, challenge: the teammate answers in its own `collab:` conversation and the answer returns to the asker) and `share_finding` (intermediate outputs; in a plan, later tasks get them in their brief). Every exchange is posted where the work is visible and on the run's history. Rooms in **review** mode: the fact-checker challenges weak claims and the author defends or revises |
+| Parallel collaboration | ❌ Missing | Sequential only | ✅ **Step 8-10:** a plan's independent tasks run at the same time; rooms have a mode: **one by one** (sequential), **in parallel** (the first answers start together) or **with review** |
+| Resume after interruption | 🟡 Partial | The transcript survives a restart, but in-flight turns are marked "Interrupted by a server restart" and never resumed (`service.ts` `sweepInterrupted()`) | 🟡 **Step 8:** team runs resume: on start, `recoverRuns()` puts interrupted tasks back in the queue (plain chat turns still don't resume). The planner can change a running plan with `update_plan`. ✅ **Step 10:** rooms resume too: each message being answered is saved after every reply (`room_rounds`), and after a restart the bots still to answer do (`resumeRoomRounds`) |
+| Loop prevention | 🟡 Partial | Hop limit of 2 and no duplicate bot in the queue. No turn budget, no cost budget, no cycle detection beyond that | ✅ **Step 8 + 10:** plans: cycle check, at most 8 tasks, one active plan per conversation. Teammate requests (`checkExchange`): chains at most 3 deep, no asking back up the chain, no repeated question, 3 per pair and 12 per piece of work, a token budget (`OPENCREWBOT_COLLAB_TOKEN_BUDGET`). Rooms: 8 replies per message, 2 hand-offs per pair. Tested with a forced loop (`tests/collaboration.test.ts`) |
 | Shared room context | 🟡 Partial | Each bot gets the last ≤30 room lines it hasn't seen (`catchUp()`); there is no shared room memory | ✅ **Step 7:** room memory file (`data/memory/rooms/<roomId>.md`) read by every bot in the room and by tasks started there |
 
 ### Module D: Autonomous task execution
@@ -159,13 +159,13 @@ Approve/Deny card clicked
 | Requirement | Original status | Evidence | What we add |
 |---|---|---|---|
 | Integration architecture | ✅ Implemented | Composio (one key, OAuth sign-in per app, 1,000+ apps) + remote MCP servers; per-bot switches | Keep |
-| 3 working integrations | 🟡 Partial | Code exists, but the original README says *"Still to verify with live services: Composio sign-in and app actions"* | Verify GitHub, Notion, Slack live |
-| Live vs mocked labels | ❌ Missing | — | Planned |
+| 3 working integrations | 🟡 Partial | Code exists, but the original README says *"Still to verify with live services: Composio sign-in and app actions"* | 🟡 **Step 12:** app actions rebuilt as `find_app_actions` / `read_from_app` (reads run) / `act_in_app` (changes ask, with a summary and the exact inputs), replacing Composio's meta tools, which mixed reads and writes in one tool. **Not yet verified live:** on 2026-11-18 Composio rejected the configured `COMPOSIO_API_KEY` (401 Invalid API key); a project API key is needed. GitHub's official MCP server (preset) is the Composio-free route |
+| Live vs mocked labels | ❌ Missing | — | ✅ **Step 12 + 14:** Connections shows each integration as LIVE / NOT CONNECTED / NOT CONFIGURED / NOT WORKING / UNTESTED (`integrations.ts`); mock mode simulates app changes (a SIMULATED report in Files, nothing sent); SIMULATED badges on mock replies, tool steps, runs and workflow runs |
 
 ### Module I: Scheduled workflows
 | Requirement | Original status | Evidence | What we add |
 |---|---|---|---|
-| Automation engine, schedules, history, pause/resume, failure reports | ❌ Missing | Listed only as an idea in the README ("Add scheduled routines with Mastra schedules") | Planned |
+| Automation engine, schedules, history, pause/resume, failure reports | ❌ Missing | Listed only as an idea in the README ("Add scheduled routines with Mastra schedules") | ✅ **Step 13:** `scheduler.ts` (cron via the `croner` library): workflows with Run now, pause / resume, history (status, trigger, duration, result, report file, transcript), the previous result handed to each run, catch-up of a run missed while the app was off, failure reports in the agent's chat, runs cut off by a restart marked failed. A workflow run can become a team plan. **Workflows** screen; the Chief of Staff's `schedule_workflow` |
 
 ### Module J: Multi-model intelligence
 | Requirement | Original status | Evidence | What we add |
@@ -188,14 +188,14 @@ Approve/Deny card clicked
 | Agent workspace | ✅ | Sidebar + chat view + inspector panel |
 | Individual agent conversations | ✅ | Direct chats (`dm:<botId>`) |
 | Multi-agent rooms | ✅ (basic) | Rooms (`room:<roomId>`) |
-| Dynamic agent creation | 🟡 | "New bot" form only |
+| Dynamic agent creation | 🟡 → ✅ (Step 11) | New bot form with **Describe the agent you need → Draft it** (Agent Factory) |
 | Memory manager | 🟡 → ✅ (Step 7) | **Memory Manager** panel (brain icon): every layer's file with who/when/why per entry, edit and save, active project picker and new project |
 | Skills and tools manager | 🟡 → ✅ (Step 6) | **Skills and tools** panel: skills library (read each procedure, see which bots use it), tool catalog with permission behaviour and key status, Files folder with upload |
 | Task execution dashboard | ❌ → ✅ (Step 8) | **Tasks and runs** panel (list icon): new goal, each task's status, owner, attempts, dependencies, duration, output and transcript on a timeline; cancel and retry; tasks waiting for approval |
 | Approval centre | 🟡 → ✅ (Step 4) | Approval Centre panel (shield icon): waiting requests with full previews, history, audit log |
-| Integration manager | ✅ | Connections panel (Composio apps + MCP servers) |
+| Integration manager | ✅ (+ Step 12) | Connections panel with **What's working**: each integration's real state and which bots use it |
 | Model configuration | 🟡 → ✅ (Step 2) | Per-bot model picker across 4 providers, fallback chain shown under it, provider keys listed in Settings |
-| Scheduled workflows | ❌ | — |
+| Scheduled workflows | ❌ → ✅ (Step 13) | **Workflows** panel (calendar icon) |
 | Execution history | 🟡 → ✅ (Step 8) | Past runs in **Tasks and runs** (events, results, transcripts) and one history file per run in the Memory Manager |
 
 ## 4. Minimum acceptance criteria (assignment section 7): starting point
@@ -204,18 +204,18 @@ Approve/Deny card clicked
 |---|---|---|
 | Configurable agents | 8 | 3 seeded (Scout, Quill, Atlas); more can be added by hand → **13 (Step 5)** |
 | Collaboration rooms | 4 | 1 seeded (Studio) → **6 (Step 5)** |
-| Dynamic agent creation | Working | Form only |
+| Dynamic agent creation | Working | Form only → **✅ (Step 11)** |
 | Parallel task execution | Working | ❌ → **✅ (Step 8)** |
 | Persistent individual memory | Working | ✅ |
 | Shared project memory | Working | ❌ → **✅ (Step 7)** |
 | Reusable skills | 8 | 0 → **11 (Step 6)** |
-| Working integrations | 3 | Unverified |
+| Working integrations | 3 | Unverified → **🟡 (Step 12):** built; live check blocked by a rejected Composio key |
 | Permission levels | 3 | 2 → **3 (Step 4)** |
-| Scheduled workflows | Working | ❌ |
+| Scheduled workflows | Working | ❌ → **✅ (Step 13)** |
 | Approval centre | Working | 🟡 inline only → **✅ (Step 4)** |
 | Execution history | Working | 🟡 transcripts only → **✅ (Step 8)** |
-| Failure recovery | Demonstrated | 🟡 restart marks turns as interrupted; no retry → **✅ (Step 8), seen live on 2026-11-18:** the final write-up hit free-tier quota limits, was retried after 5 s, failed again, and the team's results were posted unedited; **Retry** reopened the plan and it completed on another model. Reassignment, timeout and restart recovery are covered by tests |
-| Business demonstrations | 7 | 0 |
+| Failure recovery | Demonstrated | 🟡 restart marks turns as interrupted; no retry → **✅ (Step 8), seen live on 2026-11-18:** the final write-up hit free-tier quota limits, was retried after 5 s, failed again, and the team's results were posted unedited; **Retry** reopened the plan and it completed on another model. Reassignment, timeout and restart recovery are covered by tests. **Step 16, live:** a task failed, was retried and reassigned; the server was killed mid-run and the run resumed, was reassigned again and completed (`evidence/2026-11-18-run-study-abroad-…-9d0854af.md`) |
+| Business demonstrations | 7 | 0 → **prepared (Step 15):** `docs/DEMOS.md` and Save as evidence; to be run and recorded |
 
 ---
 

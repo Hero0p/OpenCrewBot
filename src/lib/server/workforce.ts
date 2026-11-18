@@ -48,7 +48,7 @@ export interface WorkforceAgent {
   bot: Omit<BotInput, "model">;
 }
 
-const BASE_TOOLS: BotTools = { webSearch: true, memory: true, codeMode: false, browser: false, askUser: true, files: true, planning: false };
+const BASE_TOOLS: BotTools = { webSearch: true, memory: true, codeMode: false, browser: false, askUser: true, files: true, planning: false, teamwork: true };
 
 /** The Chief of Staff's method. It plans with the planning tools (planning.ts); the engine runs the plan. */
 export const MORGAN_INSTRUCTIONS = [

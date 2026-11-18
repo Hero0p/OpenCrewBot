@@ -32,7 +32,12 @@ export interface BotTools {
   files: boolean;
   /** Plan and run team work: break a request into tasks for teammates (create_plan, update_plan, plan_status). For a Chief of Staff. */
   planning: boolean;
+  /** Work with teammates: ask one a question, hand over a piece of work, get a claim verified, challenge a conclusion (ask_teammate), and share findings (share_finding). */
+  teamwork: boolean;
 }
+
+/** What one agent asks of another with ask_teammate. */
+export type CollabKind = "question" | "delegate" | "verify" | "challenge";
 
 /** A company whose models OpenCrewBot can call. The facts about each one live in `shared/providers.ts`. */
 export type ProviderId = "google" | "groq" | "openrouter" | "nebius";
@@ -204,6 +209,14 @@ export interface FileEntry {
 
 export type RoomResponder = "auto" | "lead" | "everyone";
 
+/**
+ * How the bots chosen to answer one room message work together:
+ * sequential: one after another, each seeing the answers before it ·
+ * parallel: all at the same time, independently ·
+ * review: they answer one after another, then the room's fact-checker reviews the answers and challenges weak claims.
+ */
+export type RoomMode = "sequential" | "parallel" | "review";
+
 export interface Room {
   id: string;
   name: string;
@@ -212,11 +225,42 @@ export interface Room {
   memberIds: string[];
   leadId: string | null;
   responder: RoomResponder;
+  /** Rooms saved before Step 10 have none: they work sequentially. */
+  mode?: RoomMode;
   pinned: boolean;
   createdAt: string;
 }
 
 export type RoomInput = Omit<Room, "id" | "createdAt">;
+
+/**
+ * One room message being answered: who still has to answer, how many replies it has had.
+ * Saved after every reply, so a restart can pick up where the room left off (rooms.ts).
+ */
+export interface RoomRound {
+  /** The person's message this round answers. */
+  id: string;
+  roomId: string;
+  status: "running" | "done";
+  /** Bots still to answer, in order. */
+  queue: RoomTurn[];
+  /** Bots answering right now (put back at the front of the queue after a restart). */
+  current: RoomTurn[];
+  /** Replies so far, counted against the room's limit. */
+  turns: number;
+  /** Hand-offs per pair of bots ("idA|idB", sorted), counted against the pair limit. */
+  pairs: Record<string, number>;
+  /** Review mode: the fact-checker's review has been queued. */
+  reviewed: boolean;
+  createdAt: string;
+}
+
+export interface RoomTurn {
+  botId: string;
+  route: RouteNote;
+  /** Hand-off hops from the person's message: 0 for the first answers. */
+  depth: number;
+}
 
 /** `dm:<botId>` or `room:<roomId>`. */
 export type ConversationId = string;
@@ -240,6 +284,8 @@ export type Part =
       status: ToolStatus;
       preview?: string;
       sources?: Source[];
+      /** The tool only pretended (mock mode): e.g. an app action written to Files instead of sent. */
+      simulated?: boolean;
     }
   | {
       kind: "question";
@@ -252,7 +298,7 @@ export type Part =
 export type MessageStatus = "streaming" | "done" | "error" | "stopped";
 
 export interface RouteNote {
-  by: "mention" | "jev" | "lead" | "everyone" | "handoff";
+  by: "mention" | "jev" | "lead" | "everyone" | "handoff" | "review" | "resume";
   confidence?: number;
 }
 
@@ -395,6 +441,60 @@ export interface Run {
   result?: string;
   error?: string;
   events: RunEvent[];
+  /** Intermediate results teammates shared with share_finding; every task that starts later sees them. */
+  findings?: SharedFinding[];
+  /** True when the run used the mock model: its outputs are SIMULATED, not real work. */
+  simulated?: boolean;
+}
+
+/** A recurring job (Module I): an instruction sent to an agent on a schedule. */
+export interface Workflow {
+  id: string;
+  name: string;
+  /** What the agent is asked each time, e.g. "Check MeetUniversity's competitors and report what changed." */
+  instruction: string;
+  /** Who runs it: usually the Chief of Staff, who can turn it into a team plan. */
+  botId: string;
+  /** When it runs, as a cron expression, e.g. "0 9 * * 1" (Mondays at 09:00, server time). */
+  schedule: string;
+  /** False while paused. */
+  enabled: boolean;
+  createdAt: string;
+  /** When it runs next (from the schedule); empty while paused. */
+  nextRunAt?: string;
+  lastRunAt?: string;
+}
+
+export type WorkflowInput = Pick<Workflow, "name" | "instruction" | "botId" | "schedule" | "enabled">;
+
+/**
+ * One execution of a workflow. trigger: "schedule" (on time), "catch-up" (it was due while
+ * the app was off; missed runs are made up once, not once per missed slot) or "manual" (Run now).
+ */
+export interface WorkflowRun {
+  id: string;
+  workflowId: string;
+  trigger: "schedule" | "catch-up" | "manual";
+  status: "running" | "completed" | "failed";
+  startedAt: string;
+  completedAt?: string;
+  /** Where the agent worked ("workflow:<runId>"): its transcript. */
+  conversationId: ConversationId;
+  /** Set when the agent turned the instruction into a team plan. */
+  planRunId?: string;
+  result?: string;
+  error?: string;
+  /** The result as a report in the Files folder. */
+  reportPath?: string;
+  /** True when it ran on the mock model: the result is SIMULATED. */
+  simulated: boolean;
+}
+
+/** One intermediate result an agent shared with the rest of the team. */
+export interface SharedFinding {
+  by: string;
+  text: string;
+  at: string;
 }
 
 /**
@@ -475,7 +575,9 @@ export type ServerEvent =
   /** A run or one of its tasks changed. */
   | { type: "runs-changed"; runId: string }
   /** A shared memory file changed (agent memory also sends memory-changed). */
-  | { type: "memory-files-changed"; key: string };
+  | { type: "memory-files-changed"; key: string }
+  /** A workflow or one of its runs changed. */
+  | { type: "workflows-changed" };
 
 /** An app from Composio's catalog, with this install's connection state. */
 export interface ComposioApp {
@@ -497,6 +599,24 @@ export interface McpServer {
 export interface ConnectionsState {
   composio: { enabled: boolean; apps: ComposioApp[]; error?: string };
   mcpServers: McpServer[];
+  /** Every integration with its real state (integrations.ts), for the LIVE / NOT CONNECTED badges. */
+  statuses: IntegrationStatus[];
+  /** Mock mode: app changes are SIMULATED (saved to Files, never sent). */
+  mock: boolean;
+}
+
+export type IntegrationState = "live" | "not-connected" | "not-configured" | "error" | "untested";
+
+export interface IntegrationStatus {
+  /** "composio:<slug>" or "mcp:<serverId>", the same ids bots use in `connections`. */
+  id: string;
+  name: string;
+  via: "Composio" | "MCP";
+  state: IntegrationState;
+  /** What the state means and what to do next, in plain words. */
+  detail: string;
+  /** The bots that have it switched on. */
+  usedBy: string[];
 }
 
 /** Something a bot can be given access to. */
