@@ -13,6 +13,8 @@ import { deleteWorkspace, writeMemory } from "./memory-files";
 import { forgetConversation, resetBot, respondToApproval, runTurn, runningBots, stopConversation } from "./runtime";
 import { expireAllPending, expireApproval, recordDecision } from "./approvals";
 import { DEFAULT_AUTO_ACTIONS_PER_DAY } from "./permissions";
+import { WORKFORCE_AGENTS, WORKFORCE_ROOMS, modelForTier } from "./workforce";
+import { listSkills } from "./skills";
 import { messagePreview } from "@/lib/shared/preview";
 import { roomConversationId, runRoom } from "./rooms";
 
@@ -27,8 +29,38 @@ export function boot(): Promise<void> {
     await sweepInterrupted();
     await migrateModelIdsToProviderPrefix();
     await seed();
+    await seedWorkforce();
   })();
   return g.__opencrewbotBoot;
+}
+
+const WORKFORCE_SEEDED = "seed.workforce.v1";
+
+/**
+ * Create the starting workforce (workforce.ts: 10 agents, 5 rooms) exactly once,
+ * on new installs and on installs that existed before it. Existing bots and rooms
+ * are left untouched. Guarded by a settings flag, so deleting a seeded agent later
+ * doesn't bring it back.
+ */
+async function seedWorkforce() {
+  if (await store.getSetting<boolean>(WORKFORCE_SEEDED)) return;
+  const idByHandle = new Map<string, string>();
+  for (const agent of WORKFORCE_AGENTS) {
+    const bot = await createBot({ ...agent.bot, handle: agent.handle, model: modelForTier(agent.tier) });
+    idByHandle.set(agent.handle, bot.id);
+  }
+  for (const room of WORKFORCE_ROOMS) {
+    await createRoom({
+      name: room.name,
+      topic: room.topic,
+      emoji: room.emoji,
+      memberIds: room.members.map((handle) => idByHandle.get(handle)).filter((id): id is string => id !== undefined),
+      leadId: idByHandle.get(room.lead) ?? null,
+      responder: "lead",
+      pinned: room.pinned,
+    });
+  }
+  await store.setSetting(WORKFORCE_SEEDED, true);
 }
 
 const MODEL_ID_MIGRATION = "migrations.modelIdsHaveProvider";
@@ -70,7 +102,7 @@ const SEED_MARKER = join(DATA_DIR, ".seeded");
 
 async function seed() {
   if (existsSync(SEED_MARKER)) return;
-  const tools = { webSearch: true, memory: true, codeMode: false, browser: false, askUser: true };
+  const tools = { webSearch: true, memory: true, codeMode: false, browser: false, askUser: true, files: false };
   const model = defaultModel();
   const scout = await createBot({
     name: "Scout",
@@ -159,13 +191,22 @@ function validatePermissions(input: Partial<BotInput>) {
   }
 }
 
+function validateSkills(skills: string[] | undefined) {
+  if (!skills?.length) return;
+  const known = new Set(listSkills().map((s) => s.id));
+  const unknown = skills.filter((id) => !known.has(id));
+  if (unknown.length) throw new InputError(`Unknown skill${unknown.length > 1 ? "s" : ""}: ${unknown.join(", ")}. See Skills & Tools for the library.`);
+}
+
 function validateBot(input: Partial<BotInput>) {
   if (input.name !== undefined && !input.name.trim()) throw new InputError("A bot needs a name.");
   if (input.name && input.name.length > 40) throw new InputError("Keep the name under 40 characters.");
   if (input.instructions && input.instructions.length > 8000) throw new InputError("Instructions are limited to 8,000 characters.");
+  if (input.outputFormat && input.outputFormat.length > 1000) throw new InputError("The output format is limited to 1,000 characters.");
   if (input.model !== undefined) validateModelId(input.model, "Model");
   for (const id of input.fallbackModels ?? []) validateModelId(id, "Fallback model");
   validatePermissions(input);
+  validateSkills(input.skills);
 }
 
 export async function createBot(input: BotInput): Promise<Bot> {
@@ -177,6 +218,11 @@ export async function createBot(input: BotInput): Promise<Bot> {
     connections: input.connections ?? [],
     preapprovedActions: input.preapprovedActions ?? [],
     autoActionsPerDay: input.autoActionsPerDay ?? DEFAULT_AUTO_ACTIONS_PER_DAY,
+    skills: input.skills ?? [],
+    outputFormat: input.outputFormat ?? "",
+    tools: { ...input.tools, files: input.tools.files ?? false },
+    // null or absent: automatic fallbacks (see automaticFallbacks in shared/providers.ts).
+    fallbackModels: input.fallbackModels ?? undefined,
     handle: await uniqueHandle(input.handle || input.name),
     createdAt: new Date().toISOString(),
   };
@@ -196,6 +242,8 @@ export async function updateBot(id: string, patch: Partial<BotInput>): Promise<B
     id: bot.id,
     createdAt: bot.createdAt,
     tools: { ...bot.tools, ...(patch.tools ?? {}) },
+    // `fallbackModels: null` switches back to automatic fallbacks; leaving the field out keeps the current list.
+    fallbackModels: patch.fallbackModels === null ? undefined : (patch.fallbackModels ?? bot.fallbackModels),
     handle: patch.handle !== undefined || patch.name !== undefined ? await uniqueHandle(patch.handle || patch.name || bot.handle, id) : bot.handle,
   };
   await store.saveBot(next);

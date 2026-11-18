@@ -11,7 +11,6 @@ const nextConfig: NextConfig = {
     "@mastra/core",
     "@mastra/memory",
     "@mastra/libsql",
-    "@mastra/tavily",
     "@mastra/quickjs",
     "@mastra/agent-browser",
     "@libsql/client",

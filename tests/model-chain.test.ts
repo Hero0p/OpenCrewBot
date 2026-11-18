@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { automaticFallbacks, splitModelId } from "@/lib/shared/providers";
 import { defaultModel, providerStatuses } from "@/lib/server/providers";
-import { ModelConfigError, resolveModelChain, toMastraModels } from "@/lib/server/model-chain";
+import { ModelConfigError, isConnectionReset, isMalformedToolCall, resolveModelChain, toMastraModels } from "@/lib/server/model-chain";
 
 const PROVIDER_KEYS = ["GEMINI_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "NEBIUS_API_KEY", "OPENCREWBOT_DEFAULT_MODEL"];
 
@@ -92,6 +92,24 @@ describe("resolveModelChain", () => {
     expect(toMastraModels(resolveModelChain({ model: "groq/openai/gpt-oss-20b" }))).toEqual([
       { model: { id: "groq/openai/gpt-oss-20b", apiKey: "q" }, maxRetries: 1 },
     ]);
+  });
+});
+
+describe("step retry matchers", () => {
+  it("recognises Groq's malformed tool calls, wherever the text sits in the error", () => {
+    expect(isMalformedToolCall(new Error("Failed to parse tool call arguments as JSON"))).toBe(true);
+    expect(isMalformedToolCall({ message: "Bad Request", responseBody: '{"error":{"code":"tool_use_failed"}}' })).toBe(true);
+    expect(isMalformedToolCall(new Error("wrapped", { cause: new Error("Tool call validation failed: parameters for tool web_search did not match schema") }))).toBe(true);
+  });
+
+  it("doesn't retry unrelated errors", () => {
+    expect(isMalformedToolCall(new Error("Invalid API key"))).toBe(false);
+    expect(isMalformedToolCall("rate limited")).toBe(false);
+  });
+
+  it("recognises dropped connections", () => {
+    expect(isConnectionReset(Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" }))).toBe(true);
+    expect(isConnectionReset(new Error("socket hang up"))).toBe(true);
   });
 });
 

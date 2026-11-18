@@ -74,7 +74,7 @@ Approve/Deny card clicked
 ### Module A: Intelligent Chief of Staff
 | Requirement | Original status | Evidence | What we add |
 |---|---|---|---|
-| Agent routing | 🟡 Partial | `rooms.ts` `decideResponders()`: @mention → Jev → room lead → everyone | Planned |
+| Agent routing | 🟡 Partial | `rooms.ts` `decideResponders()`: @mention → Jev → room lead → everyone | 🟡 **Step 5:** a Chief of Staff agent (Morgan) leads the 5 workforce rooms: it plans and hands work out with @mentions, using the original hand-off mechanism. The real planner and task engine come in Steps 8-9 |
 | Understands requests, breaks them into tasks | ❌ Missing | Atlas (the "Planning" seed bot) only *writes* a plan as chat text; nothing executes it | Planned |
 | Picks agents by capability | 🟡 Partial | Jev picks the best *single responder* from bot descriptions; this is not task assignment | Planned |
 | Dependencies, parallel tasks | ❌ Missing | Room bots run strictly one after another (`while (queue.length)` loop) | Planned |
@@ -85,18 +85,19 @@ Approve/Deny card clicked
 | Requirement | Original status | Evidence | What we add |
 |---|---|---|---|
 | Create agents without editing code | ✅ Implemented | "New bot" form (`BotForms.tsx`) → stored in the `bots` table | Keep |
-| Create agents from natural language | ❌ Missing | Form only | Planned |
-| Name, role, persona, model, tools | ✅ Implemented | `Bot` type in `types.ts`: name, title, description, instructions, model, tools | Keep |
-| Memory | ✅ Implemented | Every bot gets its own `MEMORY.md` | Extend |
-| Skills | ❌ Missing | No skills concept | Planned |
-| Permissions | 🟡 Partial | One switch per bot: `approval: "ask" \| "full"` | Planned |
-| Expected output format | ❌ Missing | — | Planned |
-| Fallback models | ❌ Missing | One model per bot | Planned |
+| Create agents from natural language | ❌ Missing | Form only | Planned (Agent Factory step) |
+| Name, role, persona, model, tools | ✅ Implemented | `Bot` type in `types.ts`: name, title, description, instructions, model, tools | Kept; new **Files and charts** tool switch |
+| Memory | ✅ Implemented | Every bot gets its own `MEMORY.md` | Extend (memory layers step) |
+| Skills | ❌ Missing | No skills concept | ✅ **Step 5-6:** `Bot.skills` (ids from `skills/`), chosen per bot in the form |
+| Permissions | 🟡 Partial | One switch per bot: `approval: "ask" \| "full"` | ✅ Step 4: three levels |
+| Expected output format | ❌ Missing | — | ✅ **Step 5:** `Bot.outputFormat`, part of the system prompt |
+| Fallback models | ❌ Missing | One model per bot | ✅ Step 2 + **Step 5:** "Automatic" or "Choose my own" ordered list in the bot form |
+| A ready-made team | 🟡 Partial | 3 seeded bots (Scout, Quill, Atlas) | ✅ **Step 5:** 10-agent workforce led by a Chief of Staff (`workforce.ts`), seeded once on new and existing installs |
 
 ### Module C: Multi-agent collaboration
 | Requirement | Original status | Evidence | What we add |
 |---|---|---|---|
-| Rooms | ✅ Implemented | `rooms` table, `RoomForms.tsx`, one seeded room ("Studio") | Extend (we need 4+) |
+| Rooms | ✅ Implemented | `rooms` table, `RoomForms.tsx`, one seeded room ("Studio") | ✅ **Step 5:** 5 more rooms, each led by the Chief of Staff (Market Intelligence, Marketing Campaign, Business Analysis, Dev Team, Operations) |
 | Delegation between agents | 🟡 Partial | A bot can @mention a teammate in its reply; up to 2 hops (`MAX_HANDOFF_DEPTH = 2`) | Planned |
 | Ask questions / share research / challenge / request verification | ❌ Missing | Only free-text @mentions; no structured message types | Planned |
 | Parallel collaboration | ❌ Missing | Sequential only | Planned |
@@ -132,12 +133,12 @@ Approve/Deny card clicked
 ### Module F: Skills and tools
 | Requirement | Original status | Evidence | What we add |
 |---|---|---|---|
-| Reusable skills (8 required) | ❌ Missing | 0 skills | Planned |
-| Dynamic skill loading | ❌ Missing | — | Planned |
-| Tool ecosystem | ✅ Implemented | `tools.ts`: web search / read page / crawl (Tavily), memory, Code Mode, browser, ask-user | Extend |
-| Code execution sandbox | ✅ Implemented | Code Mode: TypeScript in a QuickJS WebAssembly sandbox, no filesystem/network, 60 s timeout, 128 MB | Reuse for calculations |
+| Reusable skills (8 required) | ❌ Missing | 0 skills | ✅ **Step 6:** 11 skills in `skills/*/SKILL.md` (the 8 required + content calendar, report consolidation, fact-check), each with procedure, output template and quality checks |
+| Dynamic skill loading | ❌ Missing | — | ✅ **Step 6:** the prompt lists only skill descriptions; the `load_skill` tool returns the full procedure. Observed live: an agent called `load_skill` first and answered in the skill's output template |
+| Tool ecosystem | ✅ Implemented | `tools.ts`: web search / read page / crawl (Tavily), memory, Code Mode, browser, ask-user | ✅ **Step 6:** + `list_files`, `read_spreadsheet`, `make_chart`, `save_report`, `load_skill`; web tools rebuilt on the Tavily SDK with small schemas (see findings 12-13); tool catalog with permission behaviour |
+| Code execution sandbox | ✅ Implemented | Code Mode: TypeScript in a QuickJS WebAssembly sandbox, no filesystem/network, 60 s timeout, 128 MB | Reused: code can call `read_spreadsheet` / `make_chart` for exact calculations |
 | MCP | ✅ Implemented | Add remote MCP servers by URL + token (`mcp-servers.ts`) | Keep |
-| Spreadsheet / chart / report tools | ❌ Missing | — | Planned |
+| Spreadsheet / chart / report tools | ❌ Missing | — | ✅ **Step 6:** shared Files folder (`files.ts`, `charts.ts`), upload in the UI, safe file serving |
 
 ### Module G: Human approval and autonomy
 | Requirement | Original status | Evidence | What we add |
@@ -189,7 +190,7 @@ Approve/Deny card clicked
 | Multi-agent rooms | ✅ (basic) | Rooms (`room:<roomId>`) |
 | Dynamic agent creation | 🟡 | "New bot" form only |
 | Memory manager | 🟡 | One bot's Memory tab at a time |
-| Skills and tools manager | 🟡 | 5 tool switches per bot; no skills |
+| Skills and tools manager | 🟡 → ✅ (Step 6) | **Skills and tools** panel: skills library (read each procedure, see which bots use it), tool catalog with permission behaviour and key status, Files folder with upload |
 | Task execution dashboard | ❌ | — |
 | Approval centre | 🟡 → ✅ (Step 4) | Approval Centre panel (shield icon): waiting requests with full previews, history, audit log |
 | Integration manager | ✅ | Connections panel (Composio apps + MCP servers) |
@@ -201,13 +202,13 @@ Approve/Deny card clicked
 
 | Requirement | Minimum | Original |
 |---|---|---|
-| Configurable agents | 8 | 3 seeded (Scout, Quill, Atlas); more can be added by hand |
-| Collaboration rooms | 4 | 1 seeded (Studio) |
+| Configurable agents | 8 | 3 seeded (Scout, Quill, Atlas); more can be added by hand → **13 (Step 5)** |
+| Collaboration rooms | 4 | 1 seeded (Studio) → **6 (Step 5)** |
 | Dynamic agent creation | Working | Form only |
 | Parallel task execution | Working | ❌ |
 | Persistent individual memory | Working | ✅ |
 | Shared project memory | Working | ❌ |
-| Reusable skills | 8 | 0 |
+| Reusable skills | 8 | 0 → **11 (Step 6)** |
 | Working integrations | 3 | Unverified |
 | Permission levels | 3 | 2 → **3 (Step 4)** |
 | Scheduled workflows | Working | ❌ |
@@ -231,7 +232,9 @@ Approve/Deny card clicked
 9. **No tests.** Every change has to be verified by hand until we add a test suite. *Step 3: Vitest suite added (`pnpm test`), 36 tests.*
 10. **No sign-in.** The app trusts anyone who can reach it. It's safe locally because it listens on `127.0.0.1` only and `proxy.ts` blocks other hosts. **It must not be deployed publicly (e.g. Render) without adding authentication.**
 11. **The local disk is the database.** On hosts with temporary disks (Render's free tier) every restart would wipe bots, chats and memory.
-12. **Gemini rejected the web search tool.** *Found and fixed in Step 2.* Tavily's search tool declares `includeRawContent` as `false | "markdown" | "text"`; Gemini refuses a boolean inside an enum, so every request from a bot with web search failed on Gemini. `tools.ts` now narrows that option to `"markdown" | "text"` (leaving it out already means "no content").
+12. **Gemini rejected the web search tool.** *Found in Step 2.* Tavily's search tool declares `includeRawContent` as `false | "markdown" | "text"`; Gemini refuses a boolean inside an enum, so every request from a bot with web search failed on Gemini. *Fixed for good in Step 6:* the web tools are now our own small schemas on the Tavily SDK.
+13. **Groq rejected tool calls with optional fields.** *Found in Step 6.* Mastra's OpenAI compatibility layer also applies to every Groq model and turns each optional field into "required, may be null"; Groq's server then rejects calls that leave one out ("Tool call validation failed"). Fixed by keeping tool schemas small, plus a retry of the step on malformed tool calls (`modelStepRetry` in `model-chain.ts`). Mid-stream errors like these don't trigger Mastra's model fallback, only a step retry.
+14. **Free-tier limits shape model choice.** *Measured in Step 6:* Groq allows 8,000 tokens per minute per model (research turns need 10,000-130,000), Gemini 2.5 Flash's free daily quota ran out after a day of testing, and Gemini 2.5 Flash-Lite often ended multi-step tool runs with an empty reply. Seeded agents therefore use Gemini 2.5 Flash (reasoning roles) and OpenRouter's free Nemotron 3 Ultra (tool-heavy roles), with the others as fallbacks. An empty reply now shows an error instead of a blank message.
 
 ## 6. Extend or replace? Decisions
 

@@ -9,10 +9,13 @@ import type {
   ConnectionsState,
   ConversationId,
   ConversationSummary,
+  FileEntry,
   McpServer,
   ModelOption,
   Room,
   RoomInput,
+  Skill,
+  SkillsState,
 } from "@/lib/shared/types";
 
 async function call<T>(path: string, init?: RequestInit & { json?: unknown }): Promise<T> {
@@ -67,6 +70,14 @@ export const api = {
     call<{ server: McpServer }>("/api/connections/mcp", { method: "POST", json: input }),
   removeMcpServer: (id: string) => call(`/api/connections/mcp/${id}`, { method: "DELETE" }),
   testMcpServer: (id: string) => call<{ tools: number }>(`/api/connections/mcp/${id}/test`, { method: "POST" }),
+  skills: () => call<SkillsState>("/api/skills"),
+  skill: (id: string) => call<{ skill: Skill }>(`/api/skills/${encodeURIComponent(id)}`),
+  files: () => call<{ files: FileEntry[] }>("/api/files"),
+  uploadFile: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return call<{ path: string }>("/api/files", { method: "POST", body: form });
+  },
   approvals: () => call<ApprovalsState>("/api/approvals"),
   decideApproval: (id: string, approve: boolean) => call<{ approval: ApprovalRecord }>(`/api/approvals/${id}`, { method: "POST", json: { approve } }),
 };

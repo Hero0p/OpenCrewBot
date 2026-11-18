@@ -96,6 +96,10 @@ function normalizeBot(raw: Bot): Bot {
     connections: raw.connections ?? [],
     preapprovedActions: raw.preapprovedActions ?? [],
     autoActionsPerDay: raw.autoActionsPerDay ?? DEFAULT_AUTO_ACTIONS_PER_DAY,
+    skills: raw.skills ?? [],
+    outputFormat: raw.outputFormat ?? "",
+    // Bots saved before the Files tool existed have no `files` switch.
+    tools: { ...raw.tools, files: raw.tools.files ?? false },
   };
 }
 

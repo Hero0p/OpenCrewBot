@@ -1,0 +1,361 @@
+month,region,channel,product_line,leads,counselling_sessions,applications,enrolments,revenue_inr
+2026-01,North,Instagram,Aspirations,170,11,4,2,9998
+2026-01,North,Instagram,Study Abroad,121,9,3,1,85000
+2026-01,North,Instagram,School Partnerships,80,6,2,1,25000
+2026-01,North,Google Ads,Aspirations,125,19,7,4,19996
+2026-01,North,Google Ads,Study Abroad,70,12,5,2,170000
+2026-01,North,Google Ads,School Partnerships,42,7,3,2,50000
+2026-01,North,School events,Aspirations,66,27,15,9,44991
+2026-01,North,School events,Study Abroad,47,21,12,5,425000
+2026-01,North,School events,School Partnerships,25,10,6,3,75000
+2026-01,North,Referrals,Aspirations,46,18,9,5,24995
+2026-01,North,Referrals,Study Abroad,22,9,5,2,170000
+2026-01,North,Referrals,School Partnerships,18,8,4,2,50000
+2026-01,North,Webinars,Aspirations,78,15,6,3,14997
+2026-01,North,Webinars,Study Abroad,43,8,3,1,85000
+2026-01,North,Webinars,School Partnerships,36,9,3,2,50000
+2026-01,South,Instagram,Aspirations,212,15,5,3,14997
+2026-01,South,Instagram,Study Abroad,133,8,3,1,85000
+2026-01,South,Instagram,School Partnerships,106,7,2,1,25000
+2026-01,South,Google Ads,Aspirations,130,20,9,6,29994
+2026-01,South,Google Ads,Study Abroad,74,10,4,1,85000
+2026-01,South,Google Ads,School Partnerships,61,10,3,1,25000
+2026-01,South,School events,Aspirations,75,35,21,12,59988
+2026-01,South,School events,Study Abroad,46,22,11,4,340000
+2026-01,South,School events,School Partnerships,26,12,7,4,100000
+2026-01,South,Referrals,Aspirations,46,16,8,5,24995
+2026-01,South,Referrals,Study Abroad,26,10,5,2,170000
+2026-01,South,Referrals,School Partnerships,21,7,4,2,50000
+2026-01,South,Webinars,Aspirations,108,26,11,6,29994
+2026-01,South,Webinars,Study Abroad,63,15,6,2,170000
+2026-01,South,Webinars,School Partnerships,40,9,3,1,25000
+2026-01,East,Instagram,Aspirations,225,16,6,2,9998
+2026-01,East,Instagram,Study Abroad,134,10,4,1,85000
+2026-01,East,Instagram,School Partnerships,68,5,2,0,0
+2026-01,East,Google Ads,Aspirations,139,22,10,4,19996
+2026-01,East,Google Ads,Study Abroad,81,14,5,1,85000
+2026-01,East,Google Ads,School Partnerships,50,8,3,1,25000
+2026-01,East,School events,Aspirations,63,28,15,4,19996
+2026-01,East,School events,Study Abroad,31,14,9,1,85000
+2026-01,East,School events,School Partnerships,24,11,5,2,50000
+2026-01,East,Referrals,Aspirations,40,16,7,3,14997
+2026-01,East,Referrals,Study Abroad,23,9,5,1,85000
+2026-01,East,Referrals,School Partnerships,16,7,4,1,25000
+2026-01,East,Webinars,Aspirations,91,20,7,3,14997
+2026-01,East,Webinars,Study Abroad,55,11,5,1,85000
+2026-01,East,Webinars,School Partnerships,37,8,4,1,25000
+2026-01,West,Instagram,Aspirations,223,15,6,3,14997
+2026-01,West,Instagram,Study Abroad,122,8,3,1,85000
+2026-01,West,Instagram,School Partnerships,79,5,2,1,25000
+2026-01,West,Google Ads,Aspirations,125,22,8,5,24995
+2026-01,West,Google Ads,Study Abroad,73,12,4,1,85000
+2026-01,West,Google Ads,School Partnerships,55,10,4,2,50000
+2026-01,West,School events,Aspirations,88,38,18,12,59988
+2026-01,West,School events,Study Abroad,38,16,9,4,340000
+2026-01,West,School events,School Partnerships,29,14,8,4,100000
+2026-01,West,Referrals,Aspirations,36,13,6,4,19996
+2026-01,West,Referrals,Study Abroad,28,12,5,2,170000
+2026-01,West,Referrals,School Partnerships,19,7,3,1,25000
+2026-01,West,Webinars,Aspirations,103,26,12,6,29994
+2026-01,West,Webinars,Study Abroad,65,13,5,2,170000
+2026-01,West,Webinars,School Partnerships,34,7,3,1,25000
+2026-02,North,Instagram,Aspirations,216,16,6,4,19996
+2026-02,North,Instagram,Study Abroad,117,9,3,1,85000
+2026-02,North,Instagram,School Partnerships,76,6,2,1,25000
+2026-02,North,Google Ads,Aspirations,120,17,7,4,19996
+2026-02,North,Google Ads,Study Abroad,64,11,4,1,85000
+2026-02,North,Google Ads,School Partnerships,49,8,4,2,50000
+2026-02,North,School events,Aspirations,62,29,17,10,49990
+2026-02,North,School events,Study Abroad,47,22,14,6,510000
+2026-02,North,School events,School Partnerships,29,14,7,4,100000
+2026-02,North,Referrals,Aspirations,34,13,7,4,19996
+2026-02,North,Referrals,Study Abroad,25,10,5,2,170000
+2026-02,North,Referrals,School Partnerships,16,6,3,2,50000
+2026-02,North,Webinars,Aspirations,84,16,6,3,14997
+2026-02,North,Webinars,Study Abroad,44,9,4,1,85000
+2026-02,North,Webinars,School Partnerships,43,9,4,2,50000
+2026-02,South,Instagram,Aspirations,197,16,6,3,14997
+2026-02,South,Instagram,Study Abroad,129,10,3,1,85000
+2026-02,South,Instagram,School Partnerships,83,5,2,1,25000
+2026-02,South,Google Ads,Aspirations,155,25,9,5,24995
+2026-02,South,Google Ads,Study Abroad,98,17,7,2,170000
+2026-02,South,Google Ads,School Partnerships,64,9,4,2,50000
+2026-02,South,School events,Aspirations,66,26,13,8,39992
+2026-02,South,School events,Study Abroad,38,16,10,4,340000
+2026-02,South,School events,School Partnerships,34,13,7,3,75000
+2026-02,South,Referrals,Aspirations,42,17,8,4,19996
+2026-02,South,Referrals,Study Abroad,25,8,4,2,170000
+2026-02,South,Referrals,School Partnerships,16,7,3,1,25000
+2026-02,South,Webinars,Aspirations,96,20,9,6,29994
+2026-02,South,Webinars,Study Abroad,48,10,4,1,85000
+2026-02,South,Webinars,School Partnerships,46,11,5,3,75000
+2026-02,East,Instagram,Aspirations,170,10,4,1,4999
+2026-02,East,Instagram,Study Abroad,104,8,2,0,0
+2026-02,East,Instagram,School Partnerships,70,4,1,0,0
+2026-02,East,Google Ads,Aspirations,110,18,6,2,9998
+2026-02,East,Google Ads,Study Abroad,83,12,4,1,85000
+2026-02,East,Google Ads,School Partnerships,44,7,3,1,25000
+2026-02,East,School events,Aspirations,73,28,17,5,24995
+2026-02,East,School events,Study Abroad,31,14,8,2,170000
+2026-02,East,School events,School Partnerships,25,11,5,1,25000
+2026-02,East,Referrals,Aspirations,40,15,8,3,14997
+2026-02,East,Referrals,Study Abroad,25,10,5,1,85000
+2026-02,East,Referrals,School Partnerships,17,6,3,1,25000
+2026-02,East,Webinars,Aspirations,92,20,10,3,14997
+2026-02,East,Webinars,Study Abroad,40,10,4,1,85000
+2026-02,East,Webinars,School Partnerships,33,6,2,0,0
+2026-02,West,Instagram,Aspirations,202,14,5,3,14997
+2026-02,West,Instagram,Study Abroad,112,8,3,1,85000
+2026-02,West,Instagram,School Partnerships,99,8,3,2,50000
+2026-02,West,Google Ads,Aspirations,130,20,9,6,29994
+2026-02,West,Google Ads,Study Abroad,98,14,6,2,170000
+2026-02,West,Google Ads,School Partnerships,44,7,3,2,50000
+2026-02,West,School events,Aspirations,87,35,19,11,54989
+2026-02,West,School events,Study Abroad,47,19,11,4,340000
+2026-02,West,School events,School Partnerships,33,12,6,3,75000
+2026-02,West,Referrals,Aspirations,40,14,7,5,24995
+2026-02,West,Referrals,Study Abroad,21,8,4,1,85000
+2026-02,West,Referrals,School Partnerships,15,5,2,1,25000
+2026-02,West,Webinars,Aspirations,83,17,8,5,24995
+2026-02,West,Webinars,Study Abroad,47,12,6,2,170000
+2026-02,West,Webinars,School Partnerships,30,7,3,1,25000
+2026-03,North,Instagram,Aspirations,250,20,6,4,19996
+2026-03,North,Instagram,Study Abroad,105,8,3,1,85000
+2026-03,North,Instagram,School Partnerships,84,6,2,1,25000
+2026-03,North,Google Ads,Aspirations,138,23,9,5,24995
+2026-03,North,Google Ads,Study Abroad,81,15,5,2,170000
+2026-03,North,Google Ads,School Partnerships,53,9,4,2,50000
+2026-03,North,School events,Aspirations,75,29,17,9,44991
+2026-03,North,School events,Study Abroad,40,17,9,3,255000
+2026-03,North,School events,School Partnerships,32,12,7,4,100000
+2026-03,North,Referrals,Aspirations,41,14,7,4,19996
+2026-03,North,Referrals,Study Abroad,25,10,4,1,85000
+2026-03,North,Referrals,School Partnerships,15,6,3,1,25000
+2026-03,North,Webinars,Aspirations,86,17,8,4,19996
+2026-03,North,Webinars,Study Abroad,51,11,5,2,170000
+2026-03,North,Webinars,School Partnerships,41,10,4,2,50000
+2026-03,South,Instagram,Aspirations,228,15,5,3,14997
+2026-03,South,Instagram,Study Abroad,164,13,5,2,170000
+2026-03,South,Instagram,School Partnerships,94,6,2,1,25000
+2026-03,South,Google Ads,Aspirations,129,21,9,5,24995
+2026-03,South,Google Ads,Study Abroad,86,13,5,2,170000
+2026-03,South,Google Ads,School Partnerships,61,11,4,2,50000
+2026-03,South,School events,Aspirations,70,32,18,10,49990
+2026-03,South,School events,Study Abroad,45,17,10,4,340000
+2026-03,South,School events,School Partnerships,29,12,7,3,75000
+2026-03,South,Referrals,Aspirations,49,21,12,8,39992
+2026-03,South,Referrals,Study Abroad,24,10,5,2,170000
+2026-03,South,Referrals,School Partnerships,21,8,4,2,50000
+2026-03,South,Webinars,Aspirations,108,27,12,7,34993
+2026-03,South,Webinars,Study Abroad,69,16,7,2,170000
+2026-03,South,Webinars,School Partnerships,44,9,4,2,50000
+2026-03,East,Instagram,Aspirations,151,11,4,1,4999
+2026-03,East,Instagram,Study Abroad,107,7,2,0,0
+2026-03,East,Instagram,School Partnerships,62,5,2,1,25000
+2026-03,East,Google Ads,Aspirations,113,20,7,2,9998
+2026-03,East,Google Ads,Study Abroad,80,14,6,1,85000
+2026-03,East,Google Ads,School Partnerships,41,7,3,1,25000
+2026-03,East,School events,Aspirations,53,24,13,4,19996
+2026-03,East,School events,Study Abroad,41,17,10,2,170000
+2026-03,East,School events,School Partnerships,21,10,5,1,25000
+2026-03,East,Referrals,Aspirations,29,11,6,2,9998
+2026-03,East,Referrals,Study Abroad,22,8,4,1,85000
+2026-03,East,Referrals,School Partnerships,15,5,3,1,25000
+2026-03,East,Webinars,Aspirations,76,15,6,2,9998
+2026-03,East,Webinars,Study Abroad,48,9,3,1,85000
+2026-03,East,Webinars,School Partnerships,33,7,3,1,25000
+2026-03,West,Instagram,Aspirations,205,16,6,3,14997
+2026-03,West,Instagram,Study Abroad,139,8,3,1,85000
+2026-03,West,Instagram,School Partnerships,88,6,2,1,25000
+2026-03,West,Google Ads,Aspirations,137,21,8,5,24995
+2026-03,West,Google Ads,Study Abroad,91,13,6,2,170000
+2026-03,West,Google Ads,School Partnerships,62,11,4,2,50000
+2026-03,West,School events,Aspirations,71,26,14,9,44991
+2026-03,West,School events,Study Abroad,40,19,11,4,340000
+2026-03,West,School events,School Partnerships,29,11,7,3,75000
+2026-03,West,Referrals,Aspirations,44,17,9,5,24995
+2026-03,West,Referrals,Study Abroad,26,9,5,2,170000
+2026-03,West,Referrals,School Partnerships,14,6,3,2,50000
+2026-03,West,Webinars,Aspirations,90,18,8,5,24995
+2026-03,West,Webinars,Study Abroad,62,15,6,2,170000
+2026-03,West,Webinars,School Partnerships,37,9,4,2,50000
+2026-04,North,Instagram,Aspirations,251,15,5,3,14997
+2026-04,North,Instagram,Study Abroad,134,10,3,1,85000
+2026-04,North,Instagram,School Partnerships,73,5,2,1,25000
+2026-04,North,Google Ads,Aspirations,107,17,8,5,24995
+2026-04,North,Google Ads,Study Abroad,86,13,6,2,170000
+2026-04,North,Google Ads,School Partnerships,50,7,3,1,25000
+2026-04,North,School events,Aspirations,61,24,14,8,39992
+2026-04,North,School events,Study Abroad,39,15,8,3,255000
+2026-04,North,School events,School Partnerships,30,14,7,4,100000
+2026-04,North,Referrals,Aspirations,43,16,9,5,24995
+2026-04,North,Referrals,Study Abroad,21,8,4,2,170000
+2026-04,North,Referrals,School Partnerships,17,7,3,1,25000
+2026-04,North,Webinars,Aspirations,100,20,9,5,24995
+2026-04,North,Webinars,Study Abroad,46,11,4,1,85000
+2026-04,North,Webinars,School Partnerships,42,10,4,2,50000
+2026-04,South,Instagram,Aspirations,219,16,6,3,14997
+2026-04,South,Instagram,Study Abroad,146,10,3,1,85000
+2026-04,South,Instagram,School Partnerships,111,8,3,2,50000
+2026-04,South,Google Ads,Aspirations,161,24,10,5,24995
+2026-04,South,Google Ads,Study Abroad,92,15,6,2,170000
+2026-04,South,Google Ads,School Partnerships,66,10,4,2,50000
+2026-04,South,School events,Aspirations,75,31,18,10,49990
+2026-04,South,School events,Study Abroad,48,22,11,3,255000
+2026-04,South,School events,School Partnerships,33,15,9,5,125000
+2026-04,South,Referrals,Aspirations,44,17,9,6,29994
+2026-04,South,Referrals,Study Abroad,22,9,5,2,170000
+2026-04,South,Referrals,School Partnerships,20,8,4,2,50000
+2026-04,South,Webinars,Aspirations,84,21,9,5,24995
+2026-04,South,Webinars,Study Abroad,58,14,6,2,170000
+2026-04,South,Webinars,School Partnerships,34,8,4,2,50000
+2026-04,East,Instagram,Aspirations,224,14,4,2,9998
+2026-04,East,Instagram,Study Abroad,112,8,3,1,85000
+2026-04,East,Instagram,School Partnerships,64,4,1,0,0
+2026-04,East,Google Ads,Aspirations,94,13,4,1,4999
+2026-04,East,Google Ads,Study Abroad,81,12,5,1,85000
+2026-04,East,Google Ads,School Partnerships,55,8,3,1,25000
+2026-04,East,School events,Aspirations,74,33,21,7,34993
+2026-04,East,School events,Study Abroad,43,15,9,2,170000
+2026-04,East,School events,School Partnerships,27,11,5,2,50000
+2026-04,East,Referrals,Aspirations,40,16,9,3,14997
+2026-04,East,Referrals,Study Abroad,19,8,4,1,85000
+2026-04,East,Referrals,School Partnerships,13,5,3,1,25000
+2026-04,East,Webinars,Aspirations,71,15,6,2,9998
+2026-04,East,Webinars,Study Abroad,54,10,5,1,85000
+2026-04,East,Webinars,School Partnerships,36,8,4,1,25000
+2026-04,West,Instagram,Aspirations,185,13,5,3,14997
+2026-04,West,Instagram,Study Abroad,130,8,3,1,85000
+2026-04,West,Instagram,School Partnerships,79,5,2,1,25000
+2026-04,West,Google Ads,Aspirations,132,23,9,5,24995
+2026-04,West,Google Ads,Study Abroad,90,16,7,3,255000
+2026-04,West,Google Ads,School Partnerships,53,8,3,2,50000
+2026-04,West,School events,Aspirations,81,29,16,10,49990
+2026-04,West,School events,Study Abroad,46,21,13,5,425000
+2026-04,West,School events,School Partnerships,31,13,8,4,100000
+2026-04,West,Referrals,Aspirations,37,12,5,3,14997
+2026-04,West,Referrals,Study Abroad,28,9,4,2,170000
+2026-04,West,Referrals,School Partnerships,15,6,3,2,50000
+2026-04,West,Webinars,Aspirations,77,18,7,4,19996
+2026-04,West,Webinars,Study Abroad,62,13,5,2,170000
+2026-04,West,Webinars,School Partnerships,37,7,3,2,50000
+2026-05,North,Instagram,Aspirations,201,15,5,3,14997
+2026-05,North,Instagram,Study Abroad,110,9,3,1,85000
+2026-05,North,Instagram,School Partnerships,88,7,2,1,25000
+2026-05,North,Google Ads,Aspirations,124,22,9,5,24995
+2026-05,North,Google Ads,Study Abroad,83,15,7,3,255000
+2026-05,North,Google Ads,School Partnerships,58,9,4,2,50000
+2026-05,North,School events,Aspirations,72,28,13,8,39992
+2026-05,North,School events,Study Abroad,43,18,11,4,340000
+2026-05,North,School events,School Partnerships,29,13,8,5,125000
+2026-05,North,Referrals,Aspirations,44,18,8,6,29994
+2026-05,North,Referrals,Study Abroad,26,9,4,1,85000
+2026-05,North,Referrals,School Partnerships,16,6,3,1,25000
+2026-05,North,Webinars,Aspirations,95,18,9,5,24995
+2026-05,North,Webinars,Study Abroad,56,14,6,2,170000
+2026-05,North,Webinars,School Partnerships,35,7,3,2,50000
+2026-05,South,Instagram,Aspirations,242,19,7,4,19996
+2026-05,South,Instagram,Study Abroad,135,9,3,1,85000
+2026-05,South,Instagram,School Partnerships,83,6,2,1,25000
+2026-05,South,Google Ads,Aspirations,152,21,8,5,24995
+2026-05,South,Google Ads,Study Abroad,90,16,7,3,255000
+2026-05,South,Google Ads,School Partnerships,51,8,3,1,25000
+2026-05,South,School events,Aspirations,88,34,17,10,49990
+2026-05,South,School events,Study Abroad,42,17,8,3,255000
+2026-05,South,School events,School Partnerships,30,12,6,3,75000
+2026-05,South,Referrals,Aspirations,50,18,8,5,24995
+2026-05,South,Referrals,Study Abroad,22,8,4,1,85000
+2026-05,South,Referrals,School Partnerships,15,6,3,2,50000
+2026-05,South,Webinars,Aspirations,95,20,8,5,24995
+2026-05,South,Webinars,Study Abroad,56,11,4,2,170000
+2026-05,South,Webinars,School Partnerships,32,7,3,1,25000
+2026-05,East,Instagram,Aspirations,222,15,5,2,9998
+2026-05,East,Instagram,Study Abroad,107,9,3,1,85000
+2026-05,East,Instagram,School Partnerships,75,5,2,0,0
+2026-05,East,Google Ads,Aspirations,117,20,9,3,14997
+2026-05,East,Google Ads,Study Abroad,74,10,4,1,85000
+2026-05,East,Google Ads,School Partnerships,43,6,3,1,25000
+2026-05,East,School events,Aspirations,54,26,16,5,24995
+2026-05,East,School events,Study Abroad,38,15,9,2,170000
+2026-05,East,School events,School Partnerships,27,10,6,1,25000
+2026-05,East,Referrals,Aspirations,32,14,8,3,14997
+2026-05,East,Referrals,Study Abroad,23,8,4,1,85000
+2026-05,East,Referrals,School Partnerships,17,7,4,1,25000
+2026-05,East,Webinars,Aspirations,97,21,10,3,14997
+2026-05,East,Webinars,Study Abroad,39,10,4,1,85000
+2026-05,East,Webinars,School Partnerships,34,7,3,1,25000
+2026-05,West,Instagram,Aspirations,227,15,5,3,14997
+2026-05,West,Instagram,Study Abroad,114,9,4,2,170000
+2026-05,West,Instagram,School Partnerships,91,6,2,1,25000
+2026-05,West,Google Ads,Aspirations,135,21,8,5,24995
+2026-05,West,Google Ads,Study Abroad,88,14,6,2,170000
+2026-05,West,Google Ads,School Partnerships,49,7,2,1,25000
+2026-05,West,School events,Aspirations,71,28,16,10,49990
+2026-05,West,School events,Study Abroad,48,23,13,5,425000
+2026-05,West,School events,School Partnerships,32,12,6,3,75000
+2026-05,West,Referrals,Aspirations,43,15,8,5,24995
+2026-05,West,Referrals,Study Abroad,22,8,4,1,85000
+2026-05,West,Referrals,School Partnerships,17,7,3,1,25000
+2026-05,West,Webinars,Aspirations,94,24,11,6,29994
+2026-05,West,Webinars,Study Abroad,55,11,5,2,170000
+2026-05,West,Webinars,School Partnerships,31,6,3,1,25000
+2026-06,North,Instagram,Aspirations,234,15,6,3,14997
+2026-06,North,Instagram,Study Abroad,150,11,4,1,85000
+2026-06,North,Instagram,School Partnerships,81,5,2,1,25000
+2026-06,North,Google Ads,Aspirations,138,25,9,5,24995
+2026-06,North,Google Ads,Study Abroad,80,13,5,2,170000
+2026-06,North,Google Ads,School Partnerships,45,8,3,1,25000
+2026-06,North,School events,Aspirations,75,28,16,8,39992
+2026-06,North,School events,Study Abroad,35,16,9,3,255000
+2026-06,North,School events,School Partnerships,32,12,7,3,75000
+2026-06,North,Referrals,Aspirations,43,18,9,6,29994
+2026-06,North,Referrals,Study Abroad,21,7,3,1,85000
+2026-06,North,Referrals,School Partnerships,18,7,3,2,50000
+2026-06,North,Webinars,Aspirations,107,24,11,6,29994
+2026-06,North,Webinars,Study Abroad,47,10,4,1,85000
+2026-06,North,Webinars,School Partnerships,30,6,3,2,50000
+2026-06,South,Instagram,Aspirations,213,15,6,4,19996
+2026-06,South,Instagram,Study Abroad,131,10,4,1,85000
+2026-06,South,Instagram,School Partnerships,99,6,2,1,25000
+2026-06,South,Google Ads,Aspirations,158,27,10,6,29994
+2026-06,South,Google Ads,Study Abroad,83,13,5,2,170000
+2026-06,South,Google Ads,School Partnerships,64,9,3,1,25000
+2026-06,South,School events,Aspirations,87,32,16,9,44991
+2026-06,South,School events,Study Abroad,43,20,12,4,340000
+2026-06,South,School events,School Partnerships,31,12,6,3,75000
+2026-06,South,Referrals,Aspirations,43,17,9,6,29994
+2026-06,South,Referrals,Study Abroad,28,11,5,2,170000
+2026-06,South,Referrals,School Partnerships,21,8,4,2,50000
+2026-06,South,Webinars,Aspirations,86,16,7,4,19996
+2026-06,South,Webinars,Study Abroad,61,13,6,2,170000
+2026-06,South,Webinars,School Partnerships,36,8,3,1,25000
+2026-06,East,Instagram,Aspirations,165,12,5,2,9998
+2026-06,East,Instagram,Study Abroad,126,10,4,1,85000
+2026-06,East,Instagram,School Partnerships,83,6,2,1,25000
+2026-06,East,Google Ads,Aspirations,121,21,9,3,14997
+2026-06,East,Google Ads,Study Abroad,61,11,5,1,85000
+2026-06,East,Google Ads,School Partnerships,46,7,3,1,25000
+2026-06,East,School events,Aspirations,57,22,11,4,19996
+2026-06,East,School events,Study Abroad,39,17,10,2,170000
+2026-06,East,School events,School Partnerships,23,10,5,1,25000
+2026-06,East,Referrals,Aspirations,39,17,8,3,14997
+2026-06,East,Referrals,Study Abroad,22,7,3,1,85000
+2026-06,East,Referrals,School Partnerships,14,5,2,0,0
+2026-06,East,Webinars,Aspirations,92,20,9,3,14997
+2026-06,East,Webinars,Study Abroad,51,11,5,1,85000
+2026-06,East,Webinars,School Partnerships,32,7,3,1,25000
+2026-06,West,Instagram,Aspirations,258,16,5,3,14997
+2026-06,West,Instagram,Study Abroad,116,9,3,1,85000
+2026-06,West,Instagram,School Partnerships,90,5,2,1,25000
+2026-06,West,Google Ads,Aspirations,141,22,8,4,19996
+2026-06,West,Google Ads,Study Abroad,83,12,5,2,170000
+2026-06,West,Google Ads,School Partnerships,53,10,4,2,50000
+2026-06,West,School events,Aspirations,82,38,21,13,64987
+2026-06,West,School events,Study Abroad,40,17,11,4,340000
+2026-06,West,School events,School Partnerships,34,16,8,4,100000
+2026-06,West,Referrals,Aspirations,40,17,7,5,24995
+2026-06,West,Referrals,Study Abroad,30,13,7,2,170000
+2026-06,West,Referrals,School Partnerships,15,5,2,1,25000
+2026-06,West,Webinars,Aspirations,77,15,7,4,19996
+2026-06,West,Webinars,Study Abroad,63,14,6,2,170000
+2026-06,West,Webinars,School Partnerships,43,10,4,2,50000

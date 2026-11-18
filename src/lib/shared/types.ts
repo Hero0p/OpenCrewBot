@@ -28,6 +28,8 @@ export interface BotTools {
   browser: boolean;
   /** The bot may stop and ask you a question with a card in chat. */
   askUser: boolean;
+  /** Shared files: read spreadsheets (CSV), make charts and save reports in the workspace's Files folder. */
+  files: boolean;
 }
 
 /** A company whose models OpenCrewBot can call. The facts about each one live in `shared/providers.ts`. */
@@ -68,6 +70,10 @@ export interface Bot {
    */
   fallbackModels?: string[];
   tools: BotTools;
+  /** Skill ids (folders in skills/) this bot may load with the load_skill tool. */
+  skills: string[];
+  /** What the bot's answers should look like, e.g. "Markdown report with a comparison table and a sources list". Empty: no fixed format. */
+  outputFormat: string;
   /** Connection ids this bot may use: `composio:<toolkit>` or `mcp:<serverId>`. */
   connections: string[];
   approval: ApprovalMode;
@@ -79,12 +85,70 @@ export interface Bot {
   createdAt: string;
 }
 
-export type BotInput = Omit<Bot, "id" | "createdAt" | "handle" | "connections" | "preapprovedActions" | "autoActionsPerDay"> & {
+export type BotInput = Omit<Bot, "id" | "createdAt" | "handle" | "connections" | "preapprovedActions" | "autoActionsPerDay" | "skills" | "outputFormat" | "fallbackModels"> & {
   handle?: string;
   connections?: string[];
+  /** A list: try these after the bot's model. null: switch back to automatic fallbacks. Absent: keep as is. */
+  fallbackModels?: string[] | null;
   preapprovedActions?: ActionGroup[];
   autoActionsPerDay?: number;
+  skills?: string[];
+  outputFormat?: string;
 };
+
+/** A reusable skill: a SKILL.md file in skills/<id>/. Agents load its procedure with load_skill when a task matches. */
+export interface SkillSummary {
+  /** The folder name, e.g. "competitor-analysis". */
+  id: string;
+  name: string;
+  /** What the skill produces, in one or two sentences. */
+  description: string;
+  /** The kinds of request it fits; agents read this to decide whether to load it. */
+  whenToUse: string;
+  /** Tools the procedure uses. */
+  tools: string[];
+  /** The shape of the result. */
+  output: string;
+}
+
+export interface Skill extends SkillSummary {
+  /** The procedure and output template (the Markdown after the frontmatter). */
+  body: string;
+}
+
+/** A SKILL.md that couldn't be read, and why. */
+export interface SkillProblem {
+  id: string;
+  error: string;
+}
+
+/** What the Skills & Tools screen loads. */
+export interface SkillsState {
+  skills: SkillSummary[];
+  problems: SkillProblem[];
+  tools: ToolInfo[];
+}
+
+/** One built-in tool, as listed in the Skills & Tools screen. */
+export interface ToolInfo {
+  name: string;
+  label: string;
+  description: string;
+  /** Mastra approval category; decides whether it asks (see permissions.ts). */
+  category: "read" | "edit" | "execute" | "mcp" | "other";
+  /** The bot setting that turns it on. */
+  enabledBy: keyof BotTools | "skills" | "connections";
+  /** Env var the tool needs, if any. */
+  needsKey?: string;
+}
+
+/** A file in the shared Files folder (uploads, reports, charts). */
+export interface FileEntry {
+  /** Path inside the Files folder, with forward slashes, e.g. "uploads/sales.csv". */
+  path: string;
+  size: number;
+  modifiedAt: string;
+}
 
 export type RoomResponder = "auto" | "lead" | "everyone";
 

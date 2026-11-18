@@ -108,11 +108,15 @@ _Nothing happens until you choose. Staged example content._
 
 | Tool | What it does | Powered by |
 | --- | --- | --- |
-| Web search | Search, read pages and crawl sites, with sources shown under the answer | [Tavily](https://tavily.com) via `@mastra/tavily` |
+| Web search | Search, read pages and crawl sites, with sources shown under the answer | [Tavily](https://tavily.com) SDK (`@tavily/core`), with small tool schemas every model provider accepts |
 | Memory | Read and update the bot's own `MEMORY.md` | Local files |
 | Code mode | The model writes one TypeScript function that calls several tools at once, so multi-step questions take one round trip | Mastra Code Mode, in a QuickJS (WebAssembly) sandbox |
 | Browser | A real cloud browser for pages that need clicks, forms or JavaScript. Watch it live from the chat and click in to take over | [Browserbase](https://www.browserbase.com) via Mastra `AgentBrowser` |
 | Ask me | Pause and ask you a question with a card in chat | Mastra `ask_user` |
+| Files and charts | List files, read CSV spreadsheets (column summaries over every row), draw bar/line charts, save Markdown reports, all inside the shared Files folder | Local files (`data/files`), Papa Parse |
+| Skills | Load the step-by-step procedure of one of the bot's skills when a task matches | `skills/*/SKILL.md` |
+
+**Skills.** A skill is a tested procedure for one kind of work (market research, competitor analysis, financial modelling, presentations, email drafting, code review, data analysis, lead generation, content calendars, report consolidation, fact-checking). Each bot's prompt lists only its skills' descriptions; the bot calls `load_skill` to get the full procedure when a task matches, which keeps prompts short as the library grows. Browse them, the tool catalog and the Files folder in **Skills and tools** (book icon in the sidebar).
 
 ### Connections
 
@@ -145,7 +149,7 @@ cp .env.example .env
 pnpm dev
 ```
 
-Open **http://localhost:3000**. On first run OpenCrewBot creates three bots (Scout for research, Quill for writing, Atlas for planning) and a room called Studio.
+Open **http://localhost:3000**. On first run OpenCrewBot creates the original three bots (Scout for research, Quill for writing, Atlas for planning) and a room called Studio, plus a **10-agent workforce** led by Morgan, the Chief of Staff, and 5 collaboration rooms (Market Intelligence, Marketing Campaign, Business Analysis, Dev Team, Operations). Existing installs get the workforce once on their next start; their own bots are left as they are.
 
 Add your keys to `.env`, then restart `pnpm dev`. Every key is optional:
 
@@ -165,6 +169,7 @@ Add your keys to `.env`, then restart `pnpm dev`. Every key is optional:
 | `TYPESAFE_API_KEY` | Jev routing in Auto rooms. Without it, the room's lead answers. |
 | `JEV_MODEL` | Jev model id (default `jev-latest`). |
 | `OPENCREWBOT_DATA_DIR` | Where data lives (default `./data`). |
+| `OPENCREWBOT_SKILLS_DIR` | Where the skills library lives (default `./skills`). |
 | `OPENCREWBOT_ALLOWED_HOSTS` | Extra host names the API answers to, comma-separated. Only for deliberate setups behind your own sign-in. |
 
 **No keys yet?** Try these in a bot's chat in mock mode:
@@ -227,6 +232,11 @@ It assumes one local owner and has no sign-in. To keep it that way, `pnpm dev` a
 - `src/lib/server/model-chain.ts`: the ordered list of models a bot tries (its model, then fallbacks), and the reporter that records which model answered.
 - `src/lib/server/models.ts`: the model picker's catalog and prices.
 - `src/lib/server/mock-model.ts`: the scripted model used without any provider key.
+- `src/lib/server/workforce.ts`: the starting workforce: 10 agents (role, instructions, skills, tools, permission level, output format, model tier) and 5 rooms.
+- `skills/<id>/SKILL.md`: the skills library (11 skills). Plain Markdown with a short YAML header; edit or add one without touching code.
+- `src/lib/server/skills.ts`: reads the skills library; `load_skill` in `tools.ts` hands a bot one skill's procedure.
+- `src/lib/server/files.ts` and `charts.ts`: the shared Files folder (uploads, reports, charts), CSV reading, and SVG charts.
+- `samples/`: a **synthetic** sales spreadsheet and the seeded generator that makes it.
 - `src/lib/server/permissions.ts`: the three permission levels, turned into one policy per tool category for Mastra to enforce.
 - `src/lib/server/approvals.ts`: the approval and audit trail (requests, decisions, tool runs, the daily limit count).
 - `src/components/ApprovalCentre.tsx`: waiting requests, decision history and the audit log.

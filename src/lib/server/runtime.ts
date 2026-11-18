@@ -13,7 +13,7 @@ import { MASTRA_DB_URL, OWNER_ID, isMock } from "./config";
 import { conversationGeneration, getBot, saveMessage } from "./db";
 import { publish } from "./bus";
 import { costUsd, findModel } from "./models";
-import { answeringModelReporter, resolveModelChain, toMastraModels } from "./model-chain";
+import { answeringModelReporter, modelStepRetry, resolveModelChain, toMastraModels } from "./model-chain";
 import { createMockModel } from "./mock-model";
 import { announceLiveView, createSession, releaseSession } from "./browserbase";
 import { ACTION_CATEGORIES, applyPermissionRules, permissionRules } from "./permissions";
@@ -110,6 +110,8 @@ async function buildRuntime(bot: Bot): Promise<BotRuntime> {
     // The chain is rebuilt on every call from the latest saved bot, so a model switch applies to the next reply.
     model: isMock() ? createMockModel(bot.name) : () => toMastraModels(resolveModelChain(holder.bot)),
     inputProcessors: isMock() ? [] : [reporter],
+    // Retries a step whose model wrote a broken tool call (seen with Groq) or lost its connection.
+    errorProcessors: [modelStepRetry()],
     tools: { ...connectors.tools, ...builtIn.tools },
     memory,
   });
@@ -398,7 +400,12 @@ class TurnFolder {
     if (this.finished) return;
     this.finished = true;
     if (error) this.message.error = error;
-    if (this.message.error && status === "done" && !this.message.parts.some((p) => p.kind === "text" && p.text.trim())) {
+    const wroteText = this.message.parts.some((p) => p.kind === "text" && p.text.trim());
+    // Some models occasionally end a run without writing anything; say so instead of showing an empty reply.
+    if (status === "done" && !wroteText && !this.message.error) {
+      this.message.error = "The model finished without writing a reply. Ask again, or switch this bot to another model in its Details.";
+    }
+    if (this.message.error && status === "done" && !wroteText) {
       status = "error";
     }
     this.message.status = status;

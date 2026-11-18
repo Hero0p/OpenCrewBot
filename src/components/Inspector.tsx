@@ -89,6 +89,7 @@ const TOOL_LABELS: Record<keyof Bot["tools"], string> = {
   codeMode: "Code mode",
   browser: "Browser",
   askUser: "Asks questions",
+  files: "Files & charts",
 };
 
 /** Which connected apps and MCP servers this bot may use. */
@@ -214,6 +215,20 @@ function BotDetails({ bot }: { bot: Bot }) {
           <p className="text-[13.5px] text-mute">No tools. It only chats.</p>
         )}
         <p className="mt-2.5 text-[12.5px] text-mute">{permissionSummary(bot)}</p>
+      </Card>
+      <Card title="Skills">
+        {bot.skills.length ? (
+          <div className="flex flex-wrap gap-1.5">
+            {bot.skills.map((id) => (
+              <span key={id} className="rounded-full bg-raised-2 px-2.5 py-1 text-[12.5px]">
+                {id.replace(/-/g, " ")}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="text-[13.5px] text-mute">No skills yet. Add them with Edit details.</p>
+        )}
+        {bot.outputFormat && <p className="mt-2.5 text-[12.5px] leading-relaxed text-mute">Output: {bot.outputFormat}</p>}
       </Card>
       <BotConnections bot={bot} />
       <Button className="mt-2 w-full" onClick={() => setEditing(true)}>

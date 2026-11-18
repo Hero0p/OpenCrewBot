@@ -6,7 +6,8 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/client/api";
 import type { ActionGroup, Bot, BotInput } from "@/lib/shared/types";
 import { useApp } from "./OpenCrewBotApp";
-import { FallbackChain, ModelPicker } from "./ModelPicker";
+import { FallbackEditor, ModelPicker } from "./ModelPicker";
+import { useSkills } from "@/lib/client/use-skills";
 import { mockModeText } from "./SettingsPanel";
 import { Button, Drawer, Field, Mascot, Segmented, Toggle, inputClass } from "./ui";
 
@@ -21,10 +22,12 @@ function blankBot(defaultModel: string): BotInput {
     emoji: "",
     color: BOT_COLORS[Math.floor(Math.random() * BOT_COLORS.length)],
     model: defaultModel,
-    tools: { webSearch: true, memory: true, codeMode: false, browser: false, askUser: true },
+    tools: { webSearch: true, memory: true, codeMode: false, browser: false, askUser: true, files: true },
     approval: "ask",
     preapprovedActions: [],
     autoActionsPerDay: 20,
+    skills: [],
+    outputFormat: "",
     pinned: false,
   };
 }
@@ -71,6 +74,8 @@ export function BotForm({ bot, onDone }: { bot?: Bot; onDone?: (bot: Bot) => voi
 
   const set = <K extends keyof BotInput>(k: K, v: BotInput[K]) => setForm((f) => ({ ...f, [k]: v }));
   const preapproved = form.preapprovedActions ?? [];
+  const chosenSkills = form.skills ?? [];
+  const skillsLibrary = useSkills();
   const setTool = (k: keyof BotInput["tools"], v: boolean) => setForm((f) => ({ ...f, tools: { ...f.tools, [k]: v } }));
 
   const save = async () => {
@@ -161,7 +166,7 @@ export function BotForm({ bot, onDone }: { bot?: Bot; onDone?: (bot: Bot) => voi
         <div>
           <span className="mb-1.5 block text-[12.5px] font-medium text-mute">Model</span>
           <ModelPicker value={form.model} onChange={(id) => set("model", id)} />
-          <FallbackChain model={form.model} fallbackModels={form.fallbackModels} />
+          <FallbackEditor model={form.model} value={form.fallbackModels} onChange={(v) => set("fallbackModels", v)} />
           {state.status?.mockReason && <span className="mt-1.5 block text-[12px] leading-snug text-faint">{mockModeText(state.status.mockReason)}</span>}
         </div>
 
@@ -188,8 +193,42 @@ export function BotForm({ bot, onDone }: { bot?: Bot; onDone?: (bot: Bot) => voi
               onChange={(v) => setTool("browser", v)}
             />
             <Toggle label="Ask me questions" hint="Can pause and ask you with a card in chat." checked={form.tools.askUser} onChange={(v) => setTool("askUser", v)} />
+            <Toggle
+              label="Files and charts"
+              hint="Reads spreadsheets (CSV), makes charts and saves reports in the shared Files folder."
+              checked={form.tools.files ?? false}
+              onChange={(v) => setTool("files", v)}
+            />
           </div>
         </div>
+
+        <div>
+          <span className="mb-1.5 block text-[12.5px] font-medium text-mute">Skills</span>
+          <div className="divide-y divide-line rounded-2xl bg-raised px-4">
+            {skillsLibrary.data?.skills.map((s) => (
+              <Toggle
+                key={s.id}
+                label={s.name}
+                hint={s.description}
+                checked={chosenSkills.includes(s.id)}
+                onChange={(on) => set("skills", on ? [...chosenSkills, s.id] : chosenSkills.filter((id) => id !== s.id))}
+              />
+            ))}
+            {skillsLibrary.loading && <p className="py-3 text-[13px] text-mute">Loading skills…</p>}
+            {skillsLibrary.error && <p className="py-3 text-[13px] text-danger">{skillsLibrary.error}</p>}
+          </div>
+          <span className="mt-1.5 block text-[12px] leading-snug text-faint">The bot sees each skill&apos;s description and loads the full procedure only when a task matches.</span>
+        </div>
+
+        <Field label="Output format" hint="What its answers should look like. Part of its system prompt.">
+          <textarea
+            className={clsx(inputClass, "min-h-20 resize-y leading-relaxed")}
+            value={form.outputFormat ?? ""}
+            maxLength={1000}
+            onChange={(e) => set("outputFormat", e.target.value)}
+            placeholder="A comparison table, an evidence list and strategic opportunities."
+          />
+        </Field>
 
         <Field label="Permission level" hint="Searching, reading pages and its own memory never ask. Rejected actions never run.">
           <Segmented

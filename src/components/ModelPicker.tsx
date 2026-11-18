@@ -1,14 +1,14 @@
 "use client";
 
 import clsx from "clsx";
-import { Check, RefreshCw, Search, Sparkles } from "lucide-react";
+import { Check, RefreshCw, Search, Sparkles, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/client/api";
 import { formatContext } from "@/lib/client/format";
 import { automaticFallbacks } from "@/lib/shared/providers";
 import type { ModelOption } from "@/lib/shared/types";
 import { useApp } from "./OpenCrewBotApp";
-import { Drawer } from "./ui";
+import { Drawer, IconButton } from "./ui";
 
 const price = (n: number | null) => (n === null ? "–" : `$${Number(n.toFixed(2))}`);
 
@@ -206,6 +206,56 @@ export function FallbackChain({ model, fallbackModels }: { model: string; fallba
     <p className="mt-1.5 px-1 text-[12px] leading-snug text-faint">
       {names.length ? `If it fails: ${names.join(" → ")}` : "No fallback: add a second provider key to get one."}
     </p>
+  );
+}
+
+/**
+ * Choose what happens when the bot's model fails: automatic fallbacks, or your own ordered list.
+ * `value` undefined/null means automatic; an array is the custom list (empty = no fallback).
+ */
+export function FallbackEditor({ model, value, onChange }: { model: string; value?: string[] | null; onChange: (next: string[] | null) => void }) {
+  const { state } = useApp();
+  const custom = Array.isArray(value);
+  const firstOther = state.models.find((m) => m.available && m.tools && m.id !== model)?.id;
+
+  return (
+    <div className="mt-2.5">
+      <div className="flex items-center gap-1.5 px-1 text-[12.5px]">
+        <span className="text-faint">If it fails:</span>
+        <button type="button" onClick={() => onChange(null)} className={clsx("rounded-full px-2.5 py-0.5", !custom ? "bg-raised-2 text-ink" : "text-mute hover:text-ink")}>
+          Automatic
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange(custom ? value : firstOther ? [firstOther] : [])}
+          className={clsx("rounded-full px-2.5 py-0.5", custom ? "bg-raised-2 text-ink" : "text-mute hover:text-ink")}
+        >
+          Choose my own
+        </button>
+      </div>
+      {!custom && <FallbackChain model={model} />}
+      {custom && (
+        <div className="mt-2 space-y-2">
+          {value.map((id, index) => (
+            <div key={`${id}-${index}`} className="flex items-center gap-2">
+              <span className="w-5 shrink-0 text-center text-[12px] text-faint">{index + 1}.</span>
+              <div className="min-w-0 flex-1">
+                <ModelPicker value={id} onChange={(next) => onChange(value.map((v, i) => (i === index ? next : v)))} />
+              </div>
+              <IconButton label="Remove this fallback" onClick={() => onChange(value.filter((_, i) => i !== index))}>
+                <X size={15} />
+              </IconButton>
+            </div>
+          ))}
+          {value.length === 0 && <p className="px-1 text-[12px] text-faint">No fallback: if the model fails, the reply fails.</p>}
+          {value.length < 4 && firstOther && (
+            <button type="button" onClick={() => onChange([...value, firstOther])} className="px-1 text-[12.5px] font-medium text-[#8db4ff] hover:underline">
+              + Add a fallback
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
