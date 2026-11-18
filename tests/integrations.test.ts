@@ -1,7 +1,8 @@
 // Module H: app actions with per-action permissions (reads run, changes ask), honest status
 // badges (live / not connected / not configured / not working / untested), and SIMULATED changes in mock mode.
 import { describe, expect, it } from "vitest";
-import { actionLabel, appActionTools, isReadAction } from "@/lib/server/app-actions";
+import { actionLabel, appActionTools, describeInputs, isReadAction, parseInputs } from "@/lib/server/app-actions";
+import { argsPreview } from "@/lib/server/approvals";
 import { appStatuses, recordServerTest, serverStatuses } from "@/lib/server/integrations";
 import { describeComposioError } from "@/lib/server/composio";
 import { toolCategory } from "@/lib/server/tools";
@@ -38,16 +39,37 @@ describe("which app actions ask first", () => {
   it("refuses a change sent to read_from_app, and an app the bot wasn't given", async () => {
     const tools = appActionTools(["github"]);
     const read = executeOf(tools.read_from_app);
-    await expect(read({ action: "GITHUB_CREATE_AN_ISSUE", arguments: {} })).rejects.toThrow(/changes something/);
-    await expect(read({ action: "SLACK_LIST_ALL_CHANNELS", arguments: {} })).rejects.toThrow(/isn't switched on for you/);
+    await expect(read({ action: "GITHUB_CREATE_AN_ISSUE", inputs: "{}" })).rejects.toThrow(/changes something/);
+    await expect(read({ action: "SLACK_LIST_ALL_CHANNELS", inputs: "{}" })).rejects.toThrow(/isn't switched on for you/);
   });
 
   it("simulates a change in mock mode: nothing is sent, and what would have been done is saved in Files", async () => {
     const act = executeOf<{ simulated: boolean; note: string }>(appActionTools(["slack"]).act_in_app);
-    const result = await act({ action: "SLACK_SEND_MESSAGE", arguments: { channel: "#marketing", text: "Launch!" }, summary: "Post the launch note to #marketing" });
+    const result = await act({ action: "SLACK_SEND_MESSAGE", inputs: JSON.stringify({ channel: "#marketing", text: "Launch!" }), summary: "Post the launch note to #marketing" }, { requestContext: undefined });
     expect(result.simulated).toBe(true);
     expect(result.note).toContain("nothing was sent");
     expect(listFiles().some((f) => f.path.includes("simulated-slack-send-message"))).toBe(true);
+  });
+});
+
+describe("app action inputs (seen live: Gmail sends arrived with empty inputs)", () => {
+  it("reads inputs written as JSON text, and explains a bad one", () => {
+    expect(parseInputs('{"recipient_email": "a@example.com", "subject": "Hi"}')).toEqual({ recipient_email: "a@example.com", subject: "Hi" });
+    expect(parseInputs("")).toEqual({});
+    expect(() => parseInputs("recipient_email=a@example.com")).toThrow(/JSON text/);
+    expect(() => parseInputs("[1, 2]")).toThrow(/JSON object/);
+  });
+
+  it("describes an action's real input fields for the model", () => {
+    const schema = { properties: { recipient_email: { type: "string", description: "Email address of the recipient." }, subject: { type: "string" } }, required: ["recipient_email"] };
+    expect(describeInputs(schema)).toEqual({ required: ["recipient_email"], fields: { recipient_email: "string: Email address of the recipient.", subject: "string" } });
+    expect(describeInputs(undefined)).toBeUndefined();
+  });
+
+  it("shows JSON-text inputs readably in the approval preview", () => {
+    const preview = argsPreview({ action: "GMAIL_SEND_EMAIL", inputs: '{"recipient_email": "a@example.com", "subject": "Hi"}', summary: "Email a greeting" });
+    expect(preview).toContain('"recipient_email": "a@example.com"');
+    expect(preview).not.toContain('\\"');
   });
 });
 

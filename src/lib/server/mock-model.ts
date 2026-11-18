@@ -113,7 +113,7 @@ export function createMockModel(botName: string, settings: { plan?: (goal: strin
       // "post <text> to #channel on Slack": an app action that changes something, so it waits for approval (Demo 7).
       const slackPost = said.match(/\bpost\s+"?(.+?)"?\s+to\s+(?:the\s+)?(#[\w-]+)(?:\s+channel)?\s+on\s+slack/i);
       if (slackPost && tools.has("act_in_app")) {
-        return toolCall("act_in_app", { action: "SLACK_SEND_MESSAGE", arguments: { channel: slackPost[2], text: slackPost[1] }, summary: `Post "${slackPost[1]}" to ${slackPost[2]}` });
+        return toolCall("act_in_app", { action: "SLACK_SEND_MESSAGE", inputs: JSON.stringify({ channel: slackPost[2], text: slackPost[1] }), summary: `Post "${slackPost[1]}" to ${slackPost[2]}` });
       }
       const askTeammate = said.match(/\bask @([a-z0-9_-]+)\s+(?:to\s+)?(.{10,})/i);
       if (askTeammate && tools.has("ask_teammate")) {

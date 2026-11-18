@@ -20,10 +20,26 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * @param args - the arguments the model chose
  * @returns at most PREVIEW_LIMIT characters
  */
+/** Expand string fields that hold JSON objects (app actions pass their inputs as JSON text), so the preview is readable. */
+function expandJsonText(args: unknown): unknown {
+  if (!args || typeof args !== "object" || Array.isArray(args)) return args;
+  return Object.fromEntries(
+    Object.entries(args as Record<string, unknown>).map(([k, v]) => {
+      if (typeof v !== "string" || !/^\s*[{[]/.test(v)) return [k, v];
+      try {
+        return [k, JSON.parse(v)];
+      } catch {
+        // Not valid JSON after all: show the text as the model wrote it.
+        return [k, v];
+      }
+    }),
+  );
+}
+
 export function argsPreview(args: unknown): string {
   let json: string;
   try {
-    json = JSON.stringify(args ?? {}, null, 2);
+    json = JSON.stringify(expandJsonText(args ?? {}), null, 2);
   } catch {
     // Arguments that can't be serialised (e.g. circular) are rare; say so instead of failing the request.
     json = "(arguments could not be shown)";

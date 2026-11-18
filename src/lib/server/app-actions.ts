@@ -15,7 +15,8 @@ import { createTool } from "@mastra/core/tools";
 import type { ToolsInput } from "@mastra/core/agent";
 import { z } from "zod";
 import { isMock } from "./config";
-import { composioSession, describeComposioError } from "./composio";
+import { actionInputSchema, composioSession, describeComposioError } from "./composio";
+import { conversationIdOf } from "./request-context";
 import { saveReport } from "./files";
 
 /** The verbs (right after the app name) of actions that only read. Anything else counts as a change. */
@@ -50,6 +51,44 @@ function checkApp(slug: string, apps: string[]): void {
   if (!apps.includes(app)) throw new Error(`"${slug}" belongs to ${app}, which isn't switched on for you. Your apps: ${apps.join(", ")}.`);
 }
 
+/** How many times one action may fail in one conversation (within FAILURE_WINDOW_MS) before the bot is told to stop. */
+const MAX_FAILURES = 2;
+const FAILURE_WINDOW_MS = 15 * 60_000;
+
+/**
+ * Read the inputs the model wrote as JSON text.
+ * Inputs are JSON text, not an object field, because a free-form object reached the app empty: for Groq,
+ * Mastra turns tool schemas into OpenAI "strict" schemas, where an object without listed fields can only
+ * be {} (seen live: four Gmail sends approved and refused, each with "arguments": {}).
+ * @throws Error saying how to write it, when it isn't a JSON object
+ */
+export function parseInputs(inputs: string): Record<string, unknown> {
+  let value: unknown;
+  try {
+    value = JSON.parse(inputs.trim() || "{}");
+  } catch {
+    throw new Error('inputs must be JSON text for an object, e.g. {"recipient_email": "a@example.com", "subject": "Hi", "body": "Hello"}.');
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("inputs must be a JSON object (curly braces), not a list or a plain value.");
+  return value as Record<string, unknown>;
+}
+
+type JsonSchema = { properties?: Record<string, { type?: unknown; description?: unknown }>; required?: unknown };
+
+/** An action's inputs in a few words each, so the model uses the real field names. */
+export function describeInputs(schema: unknown): { required: string[]; fields: Record<string, string> } | undefined {
+  if (!schema || typeof schema !== "object") return undefined;
+  const s = schema as JsonSchema;
+  const fields: Record<string, string> = {};
+  for (const [name, prop] of Object.entries(s.properties ?? {}).slice(0, 15)) {
+    const type = typeof prop?.type === "string" ? prop.type : "value";
+    const description = typeof prop?.description === "string" ? prop.description.replace(/\s+/g, " ").slice(0, 110) : "";
+    fields[name] = description ? `${type}: ${description}` : type;
+  }
+  const required = Array.isArray(s.required) ? s.required.filter((r): r is string => typeof r === "string") : [];
+  return { required, fields };
+}
+
 /**
  * The app tools for one bot.
  * @param apps - the Composio app slugs switched on for this bot, e.g. ["github", "notion"]
@@ -59,12 +98,28 @@ export function appActionTools(apps: string[]): ToolsInput {
   let session: Awaited<ReturnType<typeof composioSession>> | null = null;
   // One Composio session per bot, created on first use.
   const getSession = async () => (session ??= await composioSession(apps));
+  /** Action input schemas this bot has looked up, by slug. */
+  const inputSchemas = new Map<string, unknown>();
+  /** "<conversation>|<action>" → times it failed recently, to stop a model that keeps retrying a broken call. */
+  const failures = new Map<string, number[]>();
 
-  const run = async (slug: string, args: Record<string, unknown>) => {
+  const inputsOf = async (slug: string) => {
+    if (!inputSchemas.has(slug)) inputSchemas.set(slug, await actionInputSchema(slug).catch(() => undefined));
+    return describeInputs(inputSchemas.get(slug));
+  };
+
+  const run = async (slug: string, args: Record<string, unknown>, conversationId: string) => {
+    const key = `${conversationId}|${slug}`;
+    const recent = (failures.get(key) ?? []).filter((at) => Date.now() - at < FAILURE_WINDOW_MS);
+    if (recent.length >= MAX_FAILURES) {
+      return { ok: false, stop: true, error: `${actionLabel(slug)} has already failed ${MAX_FAILURES} times here. Don't try it again: tell the person what went wrong and what you'd need from them.` };
+    }
     try {
       const result = await (await getSession()).execute(slug, args);
-      if (result.resultType === "failed") return { ok: false, error: result.error || `${actionLabel(slug)} failed.` };
-      return { ok: true, data: clipJson(result.data) };
+      if (result.resultType !== "failed") return { ok: true, data: clipJson(result.data) };
+      failures.set(key, [...recent, Date.now()]);
+      // Hand back the real input fields, so the next call can be right first time.
+      return { ok: false, error: result.error || `${actionLabel(slug)} failed.`, expectedInputs: await inputsOf(slug), triesLeft: MAX_FAILURES - recent.length - 1 };
     } catch (error) {
       throw new Error(describeComposioError(error));
     }
@@ -73,7 +128,8 @@ export function appActionTools(apps: string[]): ToolsInput {
   return {
     find_app_actions: createTool({
       id: "find_app_actions",
-      description: "Find the app action that does what you need (e.g. 'list open issues in a repo', 'create a Notion page'). Returns action names, whether each reads or changes something, and how to use them.",
+      description:
+        "Find the app action that does what you need (e.g. 'send an email', 'list open issues in a repo'). Returns action names, whether each reads or changes something, and the exact input fields to use.",
       inputSchema: z.object({
         app: z.enum(appEnum).describe("Which app."),
         need: z.string().min(3).describe("What you want to do, in plain words."),
@@ -82,12 +138,22 @@ export function appActionTools(apps: string[]): ToolsInput {
         if (isMock()) return { mock: true, note: "Mock mode: app actions can't be looked up. Nothing was sent to the app." };
         try {
           const found = await (await getSession()).search({ query: need, toolkits: [app] });
-          const results = found.results.slice(0, 3).map((r) => ({
-            useCase: r.useCase,
-            actions: [...r.primaryToolSlugs, ...r.relatedToolSlugs].slice(0, 6).map((slug) => ({ action: slug, kind: isReadAction(slug) ? "reads (use read_from_app)" : "changes something (use act_in_app)" })),
-            guidance: r.executionGuidance?.slice(0, 600),
-            pitfalls: r.knownPitfalls?.slice(0, 3),
-          }));
+          for (const [slug, schema] of Object.entries(found.toolSchemas ?? {})) if (schema.inputSchema) inputSchemas.set(slug, schema.inputSchema);
+          const results = await Promise.all(
+            found.results.slice(0, 2).map(async (r) => ({
+              useCase: r.useCase,
+              actions: await Promise.all(
+                [...r.primaryToolSlugs, ...r.relatedToolSlugs].slice(0, 4).map(async (slug, i) => ({
+                  action: slug,
+                  kind: isReadAction(slug) ? "reads (use read_from_app)" : "changes something (use act_in_app)",
+                  // The inputs of the first two actions, so the model writes real field names instead of guessing.
+                  inputs: i < 2 ? await inputsOf(slug) : undefined,
+                })),
+              ),
+              guidance: r.executionGuidance?.slice(0, 500),
+              pitfalls: r.knownPitfalls?.slice(0, 3),
+            })),
+          );
           return { results, error: found.error ?? undefined };
         } catch (error) {
           throw new Error(describeComposioError(error));
@@ -99,32 +165,35 @@ export function appActionTools(apps: string[]): ToolsInput {
       description: "Run an app action that only reads (its name has GET, LIST, SEARCH, FETCH… after the app). Runs without asking. For anything that changes something, use act_in_app.",
       inputSchema: z.object({
         action: z.string().min(3).describe('The action name from find_app_actions, e.g. "GITHUB_LIST_REPOSITORY_ISSUES".'),
-        arguments: z.record(z.string(), z.unknown()).describe("The action's inputs."),
+        inputs: z.string().describe('The action\'s inputs as JSON text, with the field names find_app_actions gave, e.g. {"owner": "octocat", "repo": "hello-world"}.'),
       }),
-      execute: async ({ action, arguments: args }) => {
+      execute: async ({ action, inputs }, context) => {
         const slug = action.toUpperCase();
         if (!isReadAction(slug)) throw new Error(`${actionLabel(slug)} changes something, so it can't run here. Use act_in_app: it shows the person exactly what will happen first.`);
         checkApp(slug, apps);
+        const args = parseInputs(inputs);
         if (isMock()) return { mock: true, note: "Mock mode: no live app data is read. Nothing was sent to the app." };
-        return run(slug, args);
+        return run(slug, args, conversationIdOf(context.requestContext) ?? "unknown");
       },
     }),
     act_in_app: createTool({
       id: "act_in_app",
-      description: "Run an app action that changes something: create an issue, post a message, add a page. The person sees your summary and the exact inputs and approves first, unless you have full access. If they reject it, it never runs.",
+      description:
+        "Run an app action that changes something: send an email, create an issue, post a message, add a page. The person sees your summary and the exact inputs and approves first, unless you have full access. If they reject it, it never runs. If it fails twice, stop and tell the person.",
       inputSchema: z.object({
-        action: z.string().min(3).describe('The action name, e.g. "GITHUB_CREATE_AN_ISSUE".'),
-        arguments: z.record(z.string(), z.unknown()).describe("The action's inputs, exactly as they'll be sent."),
-        summary: z.string().min(5).describe('What will happen, in plain words, e.g. "Post the launch note to #marketing".'),
+        action: z.string().min(3).describe('The action name, e.g. "GMAIL_SEND_EMAIL".'),
+        inputs: z.string().describe('The action\'s inputs as JSON text, exactly as they\'ll be sent, with the field names find_app_actions gave, e.g. {"recipient_email": "a@example.com", "subject": "Hi", "body": "Hello"}.'),
+        summary: z.string().min(5).describe('What will happen, in plain words, e.g. "Email a greeting to a@example.com".'),
       }),
-      execute: async ({ action, arguments: args, summary }) => {
+      execute: async ({ action, inputs, summary }, context) => {
         const slug = action.toUpperCase();
         checkApp(slug, apps);
+        const args = parseInputs(inputs);
         if (isMock()) {
           const saved = saveReport(`SIMULATED ${actionLabel(slug)}`, `# SIMULATED app action (mock mode)\n\nNothing was sent to the app.\n\n- **Action:** ${slug}\n- **Summary:** ${summary}\n- **Inputs:**\n\n\`\`\`json\n${JSON.stringify(args, null, 2)}\n\`\`\`\n`);
           return { simulated: true, note: `Mock mode: nothing was sent. What would have been done is saved in ${saved.path}.`, url: saved.url };
         }
-        return run(slug, args);
+        return run(slug, args, conversationIdOf(context.requestContext) ?? "unknown");
       },
     }),
   };

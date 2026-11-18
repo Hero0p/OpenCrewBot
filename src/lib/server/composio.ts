@@ -88,6 +88,15 @@ export async function composioSession(slugs: string[]) {
 }
 
 /**
+ * An action's input schema (JSON Schema), for telling the model the real field names.
+ * @returns undefined when Composio doesn't know the action
+ */
+export async function actionInputSchema(slug: string): Promise<unknown> {
+  const tool = await requireClient().tools.getRawComposioToolBySlug(slug);
+  return tool.inputParameters;
+}
+
+/**
  * A Composio failure in words that say how to fix it. Composio reports a bad key as
  * "401 … Invalid API key" (seen on 2026-11-18 with a key starting "ck_", which isn't a project API key).
  */
