@@ -11,6 +11,9 @@ import { getSetting, listDataFiles } from "@/lib/server/db";
 import { boot } from "@/lib/server/service";
 import { proxy } from "@/proxy";
 import { describeError } from "@/lib/server/errors";
+import { fetchWithReconnect, isClosedConnection, openDatabaseClient } from "@/lib/server/database-client";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 
 beforeAll(async () => {
   await boot();
@@ -120,5 +123,80 @@ describe("errors say why", () => {
     const dns = Object.assign(new Error("getaddrinfo"), { code: "ENOTFOUND" });
     expect(describeError(new TypeError("fetch failed", { cause: new AggregateError([dns], "") }))).toBe("fetch failed ← getaddrinfo (ENOTFOUND)");
     expect(describeError("plain")).toBe("plain");
+  });
+});
+
+describe("the hosted database survives a closed connection", () => {
+  // A stand-in for Turso: it hangs up on the first request without answering (what a closed
+  // keep-alive connection looks like to Node's fetch) and echoes the body of the next one.
+  let server: Server;
+  let url = "";
+  let requests = 0;
+  beforeAll(async () => {
+    server = createServer((req, res) => {
+      requests++;
+      if (requests === 1) {
+        req.socket.destroy();
+        return;
+      }
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => res.end(`got: ${body}`));
+    });
+    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+    url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/v3/pipeline`;
+  });
+  afterEach(() => {
+    requests = 0;
+  });
+
+  it("sends a request again, body and all, when the server closed the connection (seen on Render)", async () => {
+    // Plain fetch fails the way the plan's final task did on Render.
+    const plain = await fetch(url, { method: "POST", body: "SELECT 1" }).catch((error: unknown) => error);
+    expect(describeError(plain)).toContain("other side closed");
+    expect(isClosedConnection(plain)).toBe(true);
+
+    requests = 0;
+    const res = await fetchWithReconnect(new Request(url, { method: "POST", body: "SELECT 1" }));
+    expect(await res.text()).toBe("got: SELECT 1");
+    expect(requests).toBe(2);
+  });
+
+  it("doesn't retry a database that can't be reached at all", async () => {
+    const closed = createServer();
+    await new Promise<void>((done) => closed.listen(0, "127.0.0.1", done));
+    const port = (closed.address() as AddressInfo).port;
+    await new Promise<void>((done) => closed.close(() => done()));
+    const refused = await fetchWithReconnect(new Request(`http://127.0.0.1:${port}/`)).catch((error: unknown) => error);
+    expect(describeError(refused)).toContain("ECONNREFUSED");
+    expect(isClosedConnection(refused)).toBe(false);
+    const dns = new TypeError("fetch failed", { cause: Object.assign(new Error("getaddrinfo"), { code: "ENOTFOUND" }) });
+    expect(isClosedConnection(dns)).toBe(false);
+  });
+
+  it("is what the hosted database client uses", async () => {
+    // libSQL's own client, pointed at a server that always hangs up: each query is tried twice.
+    const hangUp = createServer((req) => req.socket.destroy());
+    await new Promise<void>((done) => hangUp.listen(0, "127.0.0.1", done));
+    let tries = 0;
+    hangUp.on("request", () => tries++);
+    const client = openDatabaseClient({ url: `http://127.0.0.1:${(hangUp.address() as AddressInfo).port}` });
+    const error = await client.execute("SELECT 1").catch((e: unknown) => e);
+    client.close();
+    await new Promise<void>((done) => hangUp.close(() => done()));
+    expect(isClosedConnection(error)).toBe(true);
+    expect(tries).toBe(2);
+  });
+
+  it("stops after one more try", async () => {
+    // Every request hangs up: the second failure is thrown, not retried forever.
+    const hangUp = createServer((req) => req.socket.destroy());
+    await new Promise<void>((done) => hangUp.listen(0, "127.0.0.1", done));
+    let tries = 0;
+    hangUp.on("request", () => tries++);
+    const error = await fetchWithReconnect(new Request(`http://127.0.0.1:${(hangUp.address() as AddressInfo).port}/`, { method: "POST", body: "x" })).catch((e: unknown) => e);
+    await new Promise<void>((done) => hangUp.close(() => done()));
+    expect(isClosedConnection(error)).toBe(true);
+    expect(tries).toBe(2);
   });
 });

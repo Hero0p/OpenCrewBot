@@ -1,7 +1,8 @@
 // App storage: bots, rooms, and the chat transcript the UI shows. Mastra keeps
 // its own store (mastra.db) for each bot's model-facing thread history.
-import { createClient, type Client } from "@libsql/client";
+import type { Client } from "@libsql/client";
 import { APP_DB, APP_DB_URL } from "./config";
+import { openDatabaseClient } from "./database-client";
 import { DEFAULT_AUTO_ACTIONS_PER_DAY } from "./permissions";
 import type { ApprovalRecord, ApprovalStatus, AuditEntry, AuditEvent, Bot, ChatMessage, ConversationId, Room, RoomRound, Run, Task, Workflow, WorkflowRun } from "@/lib/shared/types";
 
@@ -14,7 +15,7 @@ const g = globalThis as unknown as { __opencrewbotDb?: { url: string; schema?: n
 const SCHEMA_VERSION = 6;
 
 async function open(): Promise<Client> {
-  const db = createClient({ url: APP_DB.url, authToken: APP_DB.authToken });
+  const db = openDatabaseClient(APP_DB);
   await db.batch(
     [
       "CREATE TABLE IF NOT EXISTS bots (id TEXT PRIMARY KEY, data TEXT NOT NULL)",

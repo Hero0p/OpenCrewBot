@@ -9,7 +9,8 @@ import { LibSQLStore } from "@mastra/libsql";
 import { Memory } from "@mastra/memory";
 import { randomUUID } from "node:crypto";
 import type { Bot, ChatMessage, ConversationId, Part, RouteNote } from "@/lib/shared/types";
-import { MASTRA_DB, OWNER_ID, isMock } from "./config";
+import { HOSTED_DB, MASTRA_DB, OWNER_ID, isMock } from "./config";
+import { openDatabaseClient } from "./database-client";
 import { conversationGeneration, getBot, listBots, saveMessage } from "./db";
 import { publish } from "./bus";
 import { costUsd, findModel } from "./models";
@@ -29,6 +30,17 @@ import { teamSections } from "./collaboration";
 import { buildTools, isSimulatedResult, toolCategory, toolLabel, toolPreview, toolSources } from "./tools";
 
 // ── shared state that must survive Next.js hot reloads ─────────────────
+
+/**
+ * Mastra's store (thread history). With local files, Mastra opens the file itself, because it also
+ * tunes and serialises access to it. With a hosted database, it gets our client, so a request that
+ * lands on a connection Turso already closed is sent again instead of failing the turn (database-client.ts).
+ */
+function openMastraStorage(): LibSQLStore {
+  const id = "opencrewbot-mastra";
+  if (HOSTED_DB) return new LibSQLStore({ id, client: openDatabaseClient(MASTRA_DB) });
+  return new LibSQLStore({ id, url: MASTRA_DB.url, authToken: MASTRA_DB.authToken });
+}
 
 interface BotRuntime {
   signature: string;
@@ -57,7 +69,7 @@ interface State {
 
 const g = globalThis as unknown as { __opencrewbotRuntime?: State };
 const state: State = (g.__opencrewbotRuntime ??= {
-  storage: new LibSQLStore({ id: "opencrewbot-mastra", url: MASTRA_DB.url, authToken: MASTRA_DB.authToken }),
+  storage: openMastraStorage(),
   runtimes: new Map(),
   sessions: new Map(),
   chains: new Map(),
