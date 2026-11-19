@@ -7,7 +7,7 @@ services:
     name: opencrewbot
     runtime: node
     plan: free
-    branch: opencrewbot-2
+    branch: main
     buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
     startCommand: pnpm start:public
     healthCheckPath: /api/health
