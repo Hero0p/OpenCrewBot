@@ -357,6 +357,10 @@ export interface AppStatus {
   defaultModel: string;
   keys: { tavily: boolean; jev: boolean; browserbase: boolean; composio: boolean };
   dataDir: string;
+  /** "hosted": the databases are on Turso and the data folder's files are copied into them (a deployment). */
+  storage: "local" | "hosted";
+  /** OPENCREWBOT_PASSWORD is set, so the app needs signing in (and offers Sign out). */
+  signIn: boolean;
 }
 
 /** Where an approval request stands. "expired" means it can no longer be decided (restart, Stop); the action did not run. */

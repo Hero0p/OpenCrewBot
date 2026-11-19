@@ -10,6 +10,7 @@ import { extname, join, relative, resolve, sep } from "node:path";
 import Papa from "papaparse";
 import type { FileEntry } from "@/lib/shared/types";
 import { DATA_DIR } from "./config";
+import { mirrorFile } from "./data-mirror";
 
 export const FILES_DIR = join(DATA_DIR, "files");
 const SUBFOLDERS = ["uploads", "reports", "charts"] as const;
@@ -173,6 +174,7 @@ function writeNew(folder: (typeof SUBFOLDERS)[number], baseName: string, extensi
   let name = `${baseName}${extension}`;
   for (let n = 2; statSafe(join(FILES_DIR, folder, name)); n++) name = `${baseName}-${n}${extension}`;
   writeFileSync(join(FILES_DIR, folder, name), content);
+  mirrorFile(join(FILES_DIR, folder, name));
   return `${folder}/${name}`;
 }
 

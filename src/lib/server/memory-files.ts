@@ -6,6 +6,7 @@
 //
 // Each bot's own memory is data/workspaces/<botId>/MEMORY.md, as in the original app.
 import { mkdirSync, readFileSync, renameSync, writeFileSync, existsSync, rmSync } from "node:fs";
+import { mirrorFile, mirrorRemove } from "./data-mirror";
 import { dirname, join } from "node:path";
 import { WORKSPACES_DIR } from "./config";
 
@@ -50,6 +51,7 @@ export function writeTextFile(path: string, content: string): string {
   const tmp = `${path}.${process.pid}.tmp`;
   writeFileSync(tmp, clean, { mode: 0o600 });
   renameSync(tmp, path);
+  mirrorFile(path);
   return clean;
 }
 
@@ -125,7 +127,9 @@ export function writeMemory(botId: string, content: string): string {
 }
 
 export function deleteWorkspace(botId: string): void {
-  rmSync(workspaceDir(botId), { recursive: true, force: true });
+  const dir = workspaceDir(botId);
+  rmSync(dir, { recursive: true, force: true });
+  mirrorRemove(dir);
 }
 
 /** The slice of a bot's MEMORY.md that loads into the prompt, and whether it was cut. */

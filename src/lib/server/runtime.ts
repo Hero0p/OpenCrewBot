@@ -9,7 +9,7 @@ import { LibSQLStore } from "@mastra/libsql";
 import { Memory } from "@mastra/memory";
 import { randomUUID } from "node:crypto";
 import type { Bot, ChatMessage, ConversationId, Part, RouteNote } from "@/lib/shared/types";
-import { MASTRA_DB_URL, OWNER_ID, isMock } from "./config";
+import { MASTRA_DB, OWNER_ID, isMock } from "./config";
 import { conversationGeneration, getBot, listBots, saveMessage } from "./db";
 import { publish } from "./bus";
 import { costUsd, findModel } from "./models";
@@ -56,7 +56,7 @@ interface State {
 
 const g = globalThis as unknown as { __opencrewbotRuntime?: State };
 const state: State = (g.__opencrewbotRuntime ??= {
-  storage: new LibSQLStore({ id: "opencrewbot-mastra", url: MASTRA_DB_URL }),
+  storage: new LibSQLStore({ id: "opencrewbot-mastra", url: MASTRA_DB.url, authToken: MASTRA_DB.authToken }),
   runtimes: new Map(),
   sessions: new Map(),
   chains: new Map(),

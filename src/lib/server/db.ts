@@ -1,7 +1,7 @@
 // App storage: bots, rooms, and the chat transcript the UI shows. Mastra keeps
 // its own store (mastra.db) for each bot's model-facing thread history.
 import { createClient, type Client } from "@libsql/client";
-import { APP_DB_URL } from "./config";
+import { APP_DB, APP_DB_URL } from "./config";
 import { DEFAULT_AUTO_ACTIONS_PER_DAY } from "./permissions";
 import type { ApprovalRecord, ApprovalStatus, AuditEntry, AuditEvent, Bot, ChatMessage, ConversationId, Room, RoomRound, Run, Task, Workflow, WorkflowRun } from "@/lib/shared/types";
 
@@ -11,10 +11,10 @@ import type { ApprovalRecord, ApprovalStatus, AuditEntry, AuditEvent, Bot, ChatM
 const g = globalThis as unknown as { __opencrewbotDb?: { url: string; schema?: number; client: Promise<Client> } };
 
 /** Bump when a table is added, so a hot-reloaded server re-runs the CREATE statements. */
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 async function open(): Promise<Client> {
-  const db = createClient({ url: APP_DB_URL });
+  const db = createClient({ url: APP_DB.url, authToken: APP_DB.authToken });
   await db.batch(
     [
       "CREATE TABLE IF NOT EXISTS bots (id TEXT PRIMARY KEY, data TEXT NOT NULL)",
@@ -66,6 +66,8 @@ async function open(): Promise<Client> {
       "CREATE TABLE IF NOT EXISTS workflows (id TEXT PRIMARY KEY, data TEXT NOT NULL)",
       "CREATE TABLE IF NOT EXISTS workflow_runs (id TEXT PRIMARY KEY, workflow_id TEXT NOT NULL, started_at TEXT NOT NULL, status TEXT NOT NULL, data TEXT NOT NULL)",
       "CREATE INDEX IF NOT EXISTS workflow_runs_by_workflow ON workflow_runs (workflow_id, started_at)",
+      // A copy of the data folder's files (memory, uploads, reports), for hosts whose disk is wiped on restart (data-mirror.ts).
+      "CREATE TABLE IF NOT EXISTS data_files (path TEXT PRIMARY KEY, content BLOB NOT NULL, updated_at TEXT NOT NULL)",
     ],
     "write",
   );
@@ -366,6 +368,26 @@ export async function listWorkflowRuns(workflowId?: string, limit = 50): Promise
       : { sql: "SELECT data FROM workflow_runs ORDER BY started_at DESC LIMIT ?", args: [limit] },
   );
   return rows.rows.map((r) => JSON.parse(String(r.data)) as WorkflowRun);
+}
+
+// ── data files (the mirror of the data folder) ──────────────────────────
+
+/** Save one file's bytes under its path inside the data folder ("memory/user.md"). */
+export async function saveDataFile(path: string, content: Uint8Array): Promise<void> {
+  await (await db()).execute({
+    sql: "INSERT INTO data_files (path, content, updated_at) VALUES (?, ?, ?) ON CONFLICT(path) DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at",
+    args: [path, content, new Date().toISOString()],
+  });
+}
+
+/** Remove a file, or a whole folder ("workspaces/<botId>"), from the copy. */
+export async function deleteDataFiles(path: string): Promise<void> {
+  await (await db()).execute({ sql: "DELETE FROM data_files WHERE path = ? OR path LIKE ?", args: [path, `${path}/%`] });
+}
+
+export async function listDataFiles(): Promise<Array<{ path: string; content: Uint8Array }>> {
+  const rows = await (await db()).execute("SELECT path, content FROM data_files");
+  return rows.rows.map((r) => ({ path: String(r.path), content: new Uint8Array(r.content as ArrayBuffer) }));
 }
 
 // ── audit log (append-only) ─────────────────────────────────────────────

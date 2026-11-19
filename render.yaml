@@ -1,0 +1,35 @@
+# Render Blueprint for OpenCrewBot (free web service). In Render: New → Blueprint → pick this repo.
+# Secrets are marked `sync: false`: Render asks for their values when you create the service,
+# and they never go in the repo. The databases are on Turso (free), because a free Render
+# service's disk is wiped whenever it restarts; see the README's "Deploy on Render" section.
+services:
+  - type: web
+    name: opencrewbot
+    runtime: node
+    plan: free
+    branch: opencrewbot-2
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
+    startCommand: pnpm start:public
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 22.16.0
+      # Sign-in: required on a public address.
+      - key: OPENCREWBOT_PASSWORD
+        sync: false
+      # Turso database (libsql://… URL and a token).
+      - key: OPENCREWBOT_DB_URL
+        sync: false
+      - key: OPENCREWBOT_DB_AUTH_TOKEN
+        sync: false
+      # Model providers and tools: set the ones you use.
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: COMPOSIO_API_KEY
+        sync: false

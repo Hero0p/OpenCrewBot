@@ -2,9 +2,10 @@
 
 import clsx from "clsx";
 import { ArrowUpRight } from "lucide-react";
+import { useRouter } from "next/navigation";
 import type { MockReason } from "@/lib/shared/types";
 import { useApp } from "./OpenCrewBotApp";
-import { Drawer } from "./ui";
+import { Button, Drawer } from "./ui";
 
 function KeyRow({ name, envVar, ok, what, href }: { name: string; envVar: string; ok: boolean; what: string; href: string }) {
   return (
@@ -36,7 +37,9 @@ export function mockModeText(reason: MockReason): string {
 
 export function SettingsPanel({ onClose }: { onClose: () => void }) {
   const { state } = useApp();
+  const router = useRouter();
   const status = state.status;
+  const signOut = () => fetch("/api/auth/logout", { method: "POST" }).finally(() => router.replace("/login"));
   return (
     <Drawer title="Settings" onClose={onClose}>
       <p className="text-[13px] leading-relaxed text-mute">
@@ -91,11 +94,33 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
       </section>
       <section className="mt-7">
         <h3 className="text-[12.5px] font-medium text-mute">Data</h3>
-        <p className="mt-1 text-[13px] text-mute">
-          Bots, chats and each bot&apos;s <code className="rounded-md bg-raised-2 px-1 font-mono text-[12px]">MEMORY.md</code> are stored locally in:
-        </p>
-        <p className="mt-2 rounded-2xl bg-raised px-4 py-3 font-mono text-[12px] break-all text-mute">{status?.dataDir}</p>
+        {status?.storage === "hosted" ? (
+          <p className="mt-1 text-[13px] text-mute">
+            Bots, chats, runs and workflows are in your hosted database (Turso). Memory files, uploads and reports are kept there too, and written back to this server&apos;s disk when it restarts.
+          </p>
+        ) : (
+          <>
+            <p className="mt-1 text-[13px] text-mute">
+              Bots, chats and each bot&apos;s <code className="rounded-md bg-raised-2 px-1 font-mono text-[12px]">MEMORY.md</code> are stored locally in:
+            </p>
+            <p className="mt-2 rounded-2xl bg-raised px-4 py-3 font-mono text-[12px] break-all text-mute">{status?.dataDir}</p>
+          </>
+        )}
       </section>
+      {status?.signIn && (
+        <section className="mt-7">
+          <h3 className="text-[12.5px] font-medium text-mute">Sign-in</h3>
+          <p className="mt-1 text-[13px] text-mute">This workspace needs its password (OPENCREWBOT_PASSWORD).</p>
+          <Button
+            size="sm"
+            variant="secondary"
+            className="mt-2"
+            onClick={signOut}
+          >
+            Sign out
+          </Button>
+        </section>
+      )}
     </Drawer>
   );
 }

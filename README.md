@@ -271,7 +271,10 @@ Add your keys to `.env`, then restart `pnpm dev`. Every key is optional:
 | `OPENCREWBOT_COLLAB_TOKEN_BUDGET` | Optional. How many tokens teammates' answers (`ask_teammate`) may use on one piece of work (default 200,000). |
 | `OPENCREWBOT_EVIDENCE_DIR` | Optional. Where **Save as evidence** writes (default `./evidence`). |
 | `OPENCREWBOT_SKILLS_DIR` | Where the skills library lives (default `./skills`). |
-| `OPENCREWBOT_ALLOWED_HOSTS` | Extra host names the API answers to, comma-separated. Only for deliberate setups behind your own sign-in. |
+| `OPENCREWBOT_ALLOWED_HOSTS` | Extra host names the app answers to, comma-separated. On Render, its own name is allowed automatically. A public host always needs `OPENCREWBOT_PASSWORD`. |
+| `OPENCREWBOT_PASSWORD` | Turns on sign-in: every page and API call needs the password once per browser (30 days). **Required** on any address that isn't localhost; without it, the app refuses to serve there. |
+| `OPENCREWBOT_DB_URL` / `OPENCREWBOT_DB_AUTH_TOKEN` | A hosted database ([Turso](https://turso.tech), e.g. `libsql://opencrewbot-you.turso.io`) instead of the local files. Everything is kept there, including memory files, uploads and reports, so a host whose disk is wiped on restart keeps your data. |
+| `OPENCREWBOT_MIRROR_FILES` | Optional. `true` copies the data folder's files into the database even with local databases (to try the deployment setup locally). |
 
 **No keys yet?** Try these in a bot's chat in mock mode:
 
@@ -294,7 +297,29 @@ Bots, rooms, the chat transcript, and team runs and their tasks are stored in SQ
 
 OpenCrewBot sends no telemetry of its own. Review the privacy policy and retention settings of each service you connect.
 
-It assumes one local owner and has no sign-in. To keep it that way, `pnpm dev` and `pnpm start` listen on `127.0.0.1` only, and the API refuses requests from other websites and requests addressed to any host but `localhost`. Don't expose it to the internet as-is.
+Locally it assumes one owner and asks for no sign-in: `pnpm dev` and `pnpm start` listen on `127.0.0.1` only, and the app refuses requests from other websites and requests addressed to any host but `localhost`. On a public address it requires `OPENCREWBOT_PASSWORD` and refuses to serve without it. Sign-in protects one owner's workspace; it isn't a multi-user system.
+
+## Deploy on Render (free)
+The data goes in a free [Turso](https://turso.tech) database. The app keeps its tables, Mastra's thread history, and a copy of every memory file, upload and report there, and writes the files back to the disk when it starts. Neither service needs a card.
+
+1. **Create the database in Turso.**
+   1. Sign up and create a database, in the region nearest your Render region. For example, Render Singapore with Turso `aws-ap-south-1` (Mumbai) or `aws-ap-southeast-1`; Render Oregon with `aws-us-west-2`.
+   2. Copy its **URL** (`libsql://…turso.io`).
+   3. Create a **token** for it: *Create token* in the dashboard, or `turso db tokens create <db>`.
+2. **Push this branch to GitHub.**
+3. **Create the service in Render.** Choose **New → Blueprint** and pick the repo; Render reads `render.yaml`. Fill in the values it asks for:
+   - `OPENCREWBOT_PASSWORD`: a long password of your own;
+   - `OPENCREWBOT_DB_URL` and `OPENCREWBOT_DB_AUTH_TOKEN`: from step 1;
+   - your model and tool keys.
+
+   Then **Apply**. The first build takes a few minutes.
+4. **Open it and sign in.** Open `https://<service>.onrender.com`, sign in, then reconnect your apps in **Connections**. The deployed app has its own Composio identity.
+
+**Good to know:**
+- A sleeping service takes up to a minute to wake on the first visit.
+- Scheduled workflows don't run while it sleeps; on the next visit, a missed run is made up once ("catch-up").
+- Schedules use the server's clock, which on Render is UTC.
+- Run **Save as evidence** locally: on Render, the evidence folder isn't kept.
 
 ## Features
 
@@ -354,6 +379,9 @@ Gemini's lite models (`gemini-3.5-flash-lite`, `gemini-3.1-flash-lite`, `gemini-
 - `src/lib/server/app-actions.ts` and `integrations.ts`: the per-action app tools (reads run, changes ask) and each integration's real state.
 - `src/lib/server/scheduler.ts` and `src/lib/shared/schedules.ts`: workflows, the scheduler loop, catch-up and run history.
 - `src/lib/server/evidence.ts`: evidence files for the demonstrations.
+- `src/proxy.ts` and `src/lib/server/access.ts`: which hosts the app answers on, and sign-in (`OPENCREWBOT_PASSWORD`).
+- `src/lib/server/data-mirror.ts`: the copy of the data folder's files in the database, for hosts whose disk is wiped on restart.
+- `render.yaml`: the Render Blueprint (free web service).
 - `docs/DEMOS.md`: how to run and record the seven MeetUniversity demonstrations.
 - `src/lib/server/browserbase.ts`: creates, announces and releases each bot's Browserbase session.
 - `src/lib/shared/providers.ts`: the model providers (names, env vars, recommended models) and model-id helpers.

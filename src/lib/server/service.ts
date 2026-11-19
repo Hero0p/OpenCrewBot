@@ -1,5 +1,5 @@
 // What the API routes call. Keeps validation and side effects in one place.
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { ActionGroup, ApprovalMode, ApprovalRecord, Bot, BotInput, ChatMessage, ConversationId, ConversationSummary, Room, RoomInput } from "@/lib/shared/types";
@@ -22,6 +22,7 @@ import { messagePreview } from "@/lib/shared/preview";
 import { resumeRoomRounds, roomConversationId, runRoom } from "./rooms";
 import { setTeammateRunner } from "./collaboration";
 import { recoverWorkflowRuns, setWorkflowTurnRunner, startScheduler } from "./scheduler";
+import { restoreDataFiles } from "./data-mirror";
 
 export { InputError };
 
@@ -31,6 +32,9 @@ const g = globalThis as unknown as { __opencrewbotBoot?: Promise<void> };
 
 export function boot(): Promise<void> {
   g.__opencrewbotBoot ??= (async () => {
+    // On a host whose disk was wiped (Render), put the memory and Files folder back from the database first.
+    const restored = await restoreDataFiles();
+    if (restored) console.log(`[opencrewbot] restored ${restored} files from the database`);
     await sweepInterrupted();
     await migrateModelIdsToProviderPrefix();
     await seed();
@@ -155,10 +159,12 @@ async function sweepInterrupted() {
   }
 }
 
+/** Older installs marked "seeded" with this file; it's still honoured. New installs use the setting below, which survives a wiped disk. */
 const SEED_MARKER = join(DATA_DIR, ".seeded");
+const SEEDED = "seed.original.v1";
 
 async function seed() {
-  if (existsSync(SEED_MARKER)) return;
+  if (existsSync(SEED_MARKER) || (await store.getSetting<boolean>(SEEDED))) return;
   const tools = { webSearch: true, memory: true, codeMode: false, browser: false, askUser: true, files: false, planning: false, teamwork: true };
   const model = defaultModel();
   const scout = await createBot({
@@ -209,7 +215,7 @@ async function seed() {
     responder: "auto",
     pinned: true,
   });
-  writeFileSync(SEED_MARKER, new Date().toISOString());
+  await store.setSetting(SEEDED, true);
 }
 
 // ── bots ────────────────────────────────────────────────────────────────
