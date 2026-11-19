@@ -10,6 +10,7 @@ import { deleteWorkspace, memoryPath, writeMemory } from "@/lib/server/memory-fi
 import { getSetting, listDataFiles } from "@/lib/server/db";
 import { boot } from "@/lib/server/service";
 import { proxy } from "@/proxy";
+import { describeError } from "@/lib/server/errors";
 
 beforeAll(async () => {
   await boot();
@@ -108,5 +109,16 @@ describe("the data folder's files survive a wiped disk", () => {
 
   it("remembers that the original bots were created in the database, not in a file a wiped disk would lose", async () => {
     expect(await getSetting<boolean>("seed.original.v1")).toBe(true);
+  });
+});
+
+describe("errors say why", () => {
+  it("adds the reason a bare 'fetch failed' hides (seen on Render)", () => {
+    const network = Object.assign(new Error("connect ETIMEDOUT 142.250.1.95:443"), { code: "ETIMEDOUT" });
+    const fetchFailed = new TypeError("fetch failed", { cause: network });
+    expect(describeError(fetchFailed)).toBe("fetch failed ← connect ETIMEDOUT 142.250.1.95:443");
+    const dns = Object.assign(new Error("getaddrinfo"), { code: "ENOTFOUND" });
+    expect(describeError(new TypeError("fetch failed", { cause: new AggregateError([dns], "") }))).toBe("fetch failed ← getaddrinfo (ENOTFOUND)");
+    expect(describeError("plain")).toBe("plain");
   });
 });

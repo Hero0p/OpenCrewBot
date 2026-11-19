@@ -22,6 +22,7 @@ import { buildConnectorTools, connectionsVersion } from "./connectors";
 import { systemPrompt } from "./prompt";
 import { conversationIdOf } from "./request-context";
 import { conversationContext } from "./conversation-context";
+import { describeError } from "./errors";
 import { sharedMemoryFor } from "./memory-layers";
 import { mockPlan, planningSections } from "./planning";
 import { teamSections } from "./collaboration";
@@ -388,7 +389,9 @@ class TurnFolder {
         break;
       }
       case "error": {
-        this.message.error = event.error?.message || "The model returned an error.";
+        // With its underlying reason ("fetch failed" alone says nothing), and in the server log too.
+        this.message.error = event.error ? describeError(event.error) : "The model returned an error.";
+        console.error(`[opencrewbot] ${this.bot.name}'s turn failed: ${this.message.error}`);
         break;
       }
       case "agent_end": {
@@ -504,7 +507,9 @@ async function executeTurn({ bot, conversationId, content, route }: TurnRequest)
     if (!folder.finished && !folder.waitingOnPerson()) await folder.finish("done");
     return await folder.done;
   } catch (error) {
-    await folder.finish("error", error instanceof Error ? error.message : String(error));
+    const reason = describeError(error);
+    console.error(`[opencrewbot] ${latest.name}'s turn failed: ${reason}`);
+    await folder.finish("error", reason);
     return folder.message;
   } finally {
     unsubscribe?.();

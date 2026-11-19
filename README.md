@@ -321,6 +321,8 @@ The data goes in a free [Turso](https://turso.tech) database. The app keeps its 
 - Schedules use the server's clock, which on Render is UTC.
 - Run **Save as evidence** locally: on Render, the evidence folder isn't kept.
 
+**If replies fail on Render**, sign in and open `https://<service>.onrender.com/api/diagnostics`. It checks whether the server can reach its database and each provider, and shows which keys are set (never their values). For Gemini and Groq it calls with your key, so `200` means the key works, `400`/`401`/`403` means the key is wrong and `429` means quota. A failed reply also shows its full reason in chat and in Render's **Logs** (lines starting `[opencrewbot]`), for example `fetch failed ← getaddrinfo ENOTFOUND …`, not just "fetch failed".
+
 ## Features
 
 | Area | Included |
