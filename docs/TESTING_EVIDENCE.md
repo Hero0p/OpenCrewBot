@@ -4,7 +4,7 @@ How OpenCrewBot 2.0 was tested, what passed, and where the evidence is. Tested o
 
 ## Automated tests
 
-`pnpm test`: **145 tests in 16 files, all passing**. They run in mock mode with a temporary data folder and never read `.env`. `pnpm exec tsc --noEmit`, `pnpm lint` and `pnpm build` also pass.
+`pnpm test`: **162 tests in 17 files, all passing** (as of 2026-11-19; 145 in 16 files on 2026-11-18, before the deployment tests). They run in mock mode with a temporary data folder and never read `.env`. `pnpm exec tsc --noEmit`, `pnpm lint` and `pnpm build` also pass.
 
 | Requirement | Where | What is proven |
 |---|---|---|
@@ -35,7 +35,7 @@ Testing found eight bugs, and all are fixed, each with a test. Among them: revie
 
 ## Known gaps
 
-- **GitHub, Notion and Slack actions after approval were not run live.** The Composio API key in use was rejected (401). The approval gate in front of them was tested live.
+- **GitHub, Notion and Slack actions after approval were not run live on 2026-11-18.** The Composio API key in use was rejected (401). The approval gate in front of them was tested live. **On 2026-11-19, with a project API key, a Gmail send ran live on the deployment after approval, and the email arrived** (shown in the demo video). GitHub changes, Slack and Notion are still not run live.
 - **Free-tier quotas limit live use:**
   - Gemini 2.5 Flash allows 20 requests a day.
   - OpenRouter's free models allow 50 a day.

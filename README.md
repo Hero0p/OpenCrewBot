@@ -34,6 +34,11 @@ Run OpenCrewBot on your own machine. Bring a Nebius Token Factory key for the mo
 
 _Ask, search, answer, remember. Scout searches the web with Tavily, answers with its sources, and saves a decision to its own `MEMORY.md`. Staged example content; the interface is real._
 
+> **OpenCrewBot 2.0** extends this app into an AI workforce: a Chief of Staff that plans, an execution engine, collaboration, layered memory, approvals, integrations and schedules.
+> - **[Technical documentation](docs/TECHNICAL_DOCUMENTATION.md):** architecture, execution flows, setup, design decisions, live vs. simulated features, costs, licences, troubleshooting and limitations.
+> - **Also:** the [feature audit](docs/FEATURE_AUDIT.md) (original vs. new), the [demonstrations](docs/DEMOS.md) and the [testing evidence](docs/TESTING_EVIDENCE.md).
+> - **Live:** <https://opencrewbot.onrender.com> (sign-in required).
+
 ## Overview
 
 OpenCrewBot treats AI as a messaging app. Every contact in the sidebar is a bot with its own persona, its own open-source model, its own tools and its own memory. Talk to one bot directly, or put several in a room and let them split the work.
@@ -239,7 +244,7 @@ All keys stay on the server. Without any model provider key (or with `OPENCREWBO
 Use **Node.js 22.13 or newer** (developed on 24) and **pnpm**:
 
 ```sh
-git clone https://github.com/Studio1-OSS/OpenCrewBot.git
+git clone https://github.com/Hero0p/OpenCrewBot.git
 cd OpenCrewBot
 pnpm install
 cp .env.example .env
@@ -348,7 +353,7 @@ The data goes in a free [Turso](https://turso.tech) database. The app keeps its 
 
 **OpenCrewBot 2.0, November 18, 2026, with live free-tier models (Gemini, Groq, OpenRouter):** a Chief of Staff plan in a direct chat (research → fact-check → final report); a plan started in a room with two tasks running at the same time, changed mid-run with `update_plan`; the final write-up failing on quota, its retry, the unedited fallback, and the plan reopened and completed on another model; a preference taught to one agent, remembered by another after a restart, and a hand edit in the Memory Manager followed on the next reply. The Tasks and runs panel and the Memory Manager were checked in a browser. Reassignment to a teammate with the same skill, timeouts and restart recovery mid-run are covered by automated tests, not yet seen live.
 
-**Steps 10-15 (collaboration, Agent Factory, integrations, workflows, Start here, evidence)** are covered by automated tests (138 in total), most of them with the mock model running the real pipeline, and the new screens were checked in a browser. **Step 16 (November 18, 2026) ran them live** on free-tier models: teammate verification, the Agent Factory, review and parallel rooms, workflows, failure recovery with a server killed mid-run, a rejected app action that never ran, and a dry run of an unseen business problem. See `docs/TESTING_EVIDENCE.md`. GitHub, Notion and Slack actions after approval are still unverified: Composio rejected the configured key.
+**Steps 10-15 (collaboration, Agent Factory, integrations, workflows, Start here, evidence)** are covered by automated tests (138 in total), most of them with the mock model running the real pipeline, and the new screens were checked in a browser. **Step 16 (November 18, 2026) ran them live** on free-tier models: teammate verification, the Agent Factory, review and parallel rooms, workflows, failure recovery with a server killed mid-run, a rejected app action that never ran, and a dry run of an unseen business problem. See `docs/TESTING_EVIDENCE.md`. On November 19, 2026, with a working Composio key, a Gmail send ran live after approval on the deployment. GitHub changes, Notion and Slack actions after approval are still unverified.
 
 **Free-tier quotas decide what you can demo.** Measured on November 18, 2026:
 - Gemini 2.5 Flash's free tier allows **20 requests a day**.
@@ -362,7 +367,7 @@ Gemini's lite models (`gemini-3.5-flash-lite`, `gemini-3.1-flash-lite`, `gemini-
 - Let bots delegate to each other in direct chats with Mastra subagents.
 - Let Jev pick the model for each message (fast for simple asks, strong for hard ones). It's shown as "coming soon" in the model sheet.
 - Let you talk to bots from Slack or Discord with Mastra Channels.
-- Add sign-in and multiple users before deploying it anywhere shared.
+- Add multiple users and roles (today, sign-in protects one owner's workspace).
 - Add voice: speak to a bot and have it read replies aloud.
 
 ## Project layout

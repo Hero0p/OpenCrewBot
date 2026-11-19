@@ -209,7 +209,7 @@ Approve/Deny card clicked
 | Persistent individual memory | Working | ✅ |
 | Shared project memory | Working | ❌ → **✅ (Step 7)** |
 | Reusable skills | 8 | 0 → **11 (Step 6)** |
-| Working integrations | 3 | Unverified → **🟡 (Step 12):** built; live check blocked by a rejected Composio key |
+| Working integrations | 3 | Unverified → **🟡 (Step 12):** built; live check blocked by a rejected Composio key. **2026-11-19, with a working key:** Gmail send after approval ran live (email received); GitHub connected; Tavily web search live. Slack and Notion actions not run live |
 | Permission levels | 3 | 2 → **3 (Step 4)** |
 | Scheduled workflows | Working | ❌ → **✅ (Step 13)** |
 | Approval centre | Working | 🟡 inline only → **✅ (Step 4)** |
